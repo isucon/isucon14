@@ -1,0 +1,11 @@
+name: NOP action on self-hosted runner
+on:
+  push:
+    branches:
+      - main
+      - ci/nop
+jobs:
+  NOP-Job:
+    runs-on: codebuild-problem-github-actions-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - run: echo "nop"
