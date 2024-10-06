@@ -170,13 +170,16 @@ type simpleChair struct {
 }
 
 type getAppRequestResponse struct {
-	RequestID             string      `json:"request_id"`
-	PickupCoordinate      Coordinate  `json:"pickup_coordinate"`
-	DestinationCoordinate Coordinate  `json:"destination_coordinate"`
-	Status                string      `json:"status"`
-	Chair                 simpleChair `json:"chair"`
-	CreatedAt             int64       `json:"created_at"`
-	UpdateAt              int64       `json:"updated_at"`
+	RequestID                string      `json:"request_id"`
+	PickupCoordinate         Coordinate  `json:"pickup_coordinate"`
+	DestinationCoordinate    Coordinate  `json:"destination_coordinate"`
+	Status                   string      `json:"status"`
+	Chair                    simpleChair `json:"chair"`
+	LastChairLocation        *Coordinate `json:"last_chair_location"`
+	EstimatedPickupDuration  int         `json:"estimated_pickup_duration"`
+	EstimatedArrivalDuration int         `json:"estimated_arrival_duration"`
+	CreatedAt                int64       `json:"created_at"`
+	UpdateAt                 int64       `json:"updated_at"`
 }
 
 func appGetRequest(w http.ResponseWriter, r *http.Request) {
@@ -276,33 +279,79 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err)
 	}
 
+	pickupCoordinate := Coordinate{
+		Latitude:  rideRequest.PickupLatitude,
+		Longitude: rideRequest.PickupLongitude,
+	}
+	destinationCoordinate := Coordinate{
+		Latitude:  rideRequest.DestinationLatitude,
+		Longitude: rideRequest.DestinationLongitude,
+	}
+
+	var lastChairLocation *Coordinate = nil
+	estimatedPickupDuration := -1
+	estimatedArrivalDuration := -1
+
 	chair := &Chair{}
 	if rideRequest.ChairID.Valid {
 		if err := tx.Get(chair, `SELECT * FROM chairs WHERE id = ?`, rideRequest.ChairID); err != nil {
 			respondError(w, http.StatusInternalServerError, err)
 			return
 		}
+
+		chairLocations := []ChairLocation{}
+		if err := tx.Select(chairLocations, `SELECT * FROM chair_locations WHERE chair_id = ? ORDER BY created_at`, rideRequest.ChairID); err != nil {
+			respondError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		if len(chairLocations) > 0 {
+			lastChairLocation = &Coordinate{
+				Latitude:  chairLocations[0].Latitude,
+				Longitude: chairLocations[0].Longitude,
+			}
+
+			// マンハッタン距離
+			totalDistance := int64(0)
+			totalSeconds := int64(0)
+			for i, chairLocation := range chairLocations {
+				if i == 0 {
+					continue
+				}
+
+				previousChairLocation := chairLocations[i-1]
+				// TODO: オーバーフローに対処する
+				totalDistance += int64(calculateDistanceFromChairLocation(previousChairLocation, chairLocation))
+				totalSeconds += chairLocation.CreatedAt.Sub(previousChairLocation.CreatedAt).Milliseconds()
+			}
+			averageSpeed := float64(totalDistance) / float64(totalSeconds)
+
+			pickupDistance := calculateDistance(*lastChairLocation, pickupCoordinate)
+			rideDistance := calculateDistance(pickupCoordinate, destinationCoordinate)
+
+			estimatedPickupDuration = int(float64(pickupDistance) / averageSpeed)
+			estimatedArrivalDuration = int(float64(rideDistance) / averageSpeed)
+		}
 	}
 
+	// 最後の椅子の位置と椅子の速度を元に、配車と到着にどれだけかかるかを求める
+
 	respondJSON(w, http.StatusOK, &getAppRequestResponse{
-		RequestID: rideRequest.ID,
-		PickupCoordinate: Coordinate{
-			Latitude:  rideRequest.PickupLatitude,
-			Longitude: rideRequest.PickupLongitude,
-		},
-		DestinationCoordinate: Coordinate{
-			Latitude:  rideRequest.DestinationLatitude,
-			Longitude: rideRequest.DestinationLongitude,
-		},
-		Status: rideRequest.Status,
+		RequestID:             rideRequest.ID,
+		PickupCoordinate:      pickupCoordinate,
+		DestinationCoordinate: destinationCoordinate,
+		Status:                rideRequest.Status,
 		Chair: simpleChair{
 			ID:         chair.ID,
 			Name:       chair.Firstname + " " + chair.Lastname,
 			ChairModel: chair.ChairModel,
 			ChairNo:    chair.ChairNo,
 		},
-		CreatedAt: rideRequest.RequestedAt.Unix(),
-		UpdateAt:  rideRequest.UpdatedAt.Unix(),
+		LastChairLocation:        lastChairLocation,
+		EstimatedPickupDuration:  estimatedPickupDuration,
+		EstimatedArrivalDuration: estimatedArrivalDuration,
+		CreatedAt:                rideRequest.RequestedAt.Unix(),
+		UpdateAt:                 rideRequest.UpdatedAt.Unix(),
 	})
 }
 
@@ -396,4 +445,13 @@ func appPostInquiry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// マンハッタン距離を求める
+func calculateDistance(coordinate1, coordinate2 Coordinate) int {
+	return (coordinate1.Latitude - coordinate2.Latitude) + (coordinate1.Longitude - coordinate2.Longitude)
+}
+
+func calculateDistanceFromChairLocation(coordinate1, coordinate2 ChairLocation) int {
+	return (coordinate1.Latitude - coordinate2.Latitude) + (coordinate1.Longitude - coordinate2.Longitude)
 }

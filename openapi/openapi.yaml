@@ -658,6 +658,14 @@ components:
           $ref: '#/components/schemas/RequestStatus'
         chair:
           $ref: '#/components/schemas/Chair'
+        last_chair_location:
+          $ref: '#/components/schemas/Coordinate'
+        estimated_pickup_duration:
+          type: integer
+          description: 配車位置から配車完了までにかかる予想時間(秒)、不明な場合は-1
+        estimated_arrival_duration:
+          type: integer
+          description: 乗車位置から目的地までにかかる予想時間(秒)、不明な場合は-1
         created_at:
           type: number
           description: 配車要求日時
