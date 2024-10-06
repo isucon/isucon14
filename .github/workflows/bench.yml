@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'bench/go.mod'
+          cache-dependency-path: |
+            ./bench/go.sum
       - name: Install Task
         uses: arduino/setup-task@v2
       - name: Build bench
@@ -33,6 +35,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'bench/go.mod'
+          cache-dependency-path: |
+            ./bench/go.sum
       - name: Install Task
         uses: arduino/setup-task@v2
       - name: Run bench Test
