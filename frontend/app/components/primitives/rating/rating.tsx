@@ -5,7 +5,7 @@ type RatingProps = {
   starSize?: number;
 };
 
-export const Rating: FC<RatingProps> = ({ name, starSize = 12 }) => {
+export const Rating: FC<RatingProps> = ({ name, starSize = 40 }) => {
   const [rating, setRating] = useState(0);
 
   return (
@@ -33,10 +33,8 @@ export const Rating: FC<RatingProps> = ({ name, starSize = 12 }) => {
               fill={starValue <= rating ? "currentColor" : "none"}
               stroke={starValue <= rating ? "currentColor" : "gray"}
               className={`cursor-pointer ${rating >= index + 1 ? "text-yellow-400" : "text-gray-300"}`}
-              style={{
-                width: `${starSize * 0.25}rem`,
-                height: `${starSize * 0.25}rem`,
-              }}
+              width={starSize}
+              height={starSize}
               onClick={() => setRating(starValue)}
             >
               <path
