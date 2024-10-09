@@ -16,7 +16,7 @@ type postProviderRegisterResponse struct {
 	ID          string `json:"id"`
 }
 
-func providerPostRegister(w http.ResponseWriter, r *http.Request) {
+func postProviderProviders(w http.ResponseWriter, r *http.Request) {
 	req := &postProviderRegisterRequest{}
 	if err := bindJSON(r, req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -68,7 +68,7 @@ type ModelSales struct {
 	Sales int    `json:"sales"`
 }
 
-func providerGetSales(w http.ResponseWriter, r *http.Request) {
+func getProviderSales(w http.ResponseWriter, r *http.Request) {
 	provider := r.Context().Value("provider").(*Provider)
 
 	req := &getProviderSalesRequest{}
@@ -90,8 +90,8 @@ func providerGetSales(w http.ResponseWriter, r *http.Request) {
 	modelSalesByModel := map[string]int{}
 
 	for _, chair := range chairs {
-		reqs := []RideRequest{}
-		if err := db.Select(&reqs, "SELECT * FROM ride_requests WHERE chair_id = ? AND status = 'COMPLETED'", chair.ID); err != nil {
+		reqs := []Ride{}
+		if err := db.Select(&reqs, "SELECT * FROM rides WHERE chair_id = ? AND status = 'COMPLETED'", chair.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -121,7 +121,7 @@ func providerGetSales(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-func calculateSales(requests []RideRequest) int {
+func calculateSales(requests []Ride) int {
 	sale := 0
 	for _, req := range requests {
 		latDiff := req.DestinationLatitude - req.PickupLatitude

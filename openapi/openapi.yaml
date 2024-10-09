@@ -34,12 +34,12 @@ paths:
                     description: 実装言語
                 required:
                   - language
-  /app/register:
+  /app/users:
     post:
       tags:
         - app
       summary: ユーザーが会員登録を行う
-      operationId: app-post-register
+      operationId: app-post-users
       requestBody:
         content:
           application/json:
@@ -106,12 +106,12 @@ paths:
       responses:
         "204":
           description: 決済トークンの登録に成功した
-  /app/requests:
+  /app/rides:
     post:
       tags:
         - app
       summary: ユーザーが配車要求を行う
-      operationId: app-post-request
+      operationId: app-post-rides
       requestBody:
         content:
           application/json:
@@ -135,42 +135,42 @@ paths:
               schema:
                 type: object
                 properties:
-                  request_id:
+                  ride_id:
                     type: string
                     description: 配車要求ID
                 required:
-                  - request_id
-  "/app/requests/{request_id}":
+                  - ride_id
+  "/app/rides/{ride_id}":
     get:
       tags:
         - app
       summary: ユーザーが配車要求の状態を確認する
-      operationId: app-get-request
+      operationId: app-get-ride
       parameters:
-        - $ref: "#/components/parameters/request_id"
+        - $ref: "#/components/parameters/ride_id"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AppRequest"
+                $ref: "#/components/schemas/RideForApp"
         "404":
           description: Not Found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  "/app/requests/{request_id}/evaluate":
+  "/app/rides/{ride_id}/evaluation":
     post:
       tags:
         - app
       summary: ユーザーが椅子を評価する
-      operationId: app-post-request-evaluate
+      operationId: app-post-ride-evaluation
       parameters:
-        - name: request_id
+        - name: ride_id
           in: path
-          description: 配車要求ID
+          description: ライドID
           required: true
           schema:
             type: string
@@ -215,15 +215,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AppRequest"
+                $ref: "#/components/schemas/RideForApp"
         "204":
           description: 対象となる配車要求が存在しない場合
-  /provider/register:
+  /provider/providers:
     post:
       tags:
         - provider
       summary: 椅子プロバイダーが登録を行う
-      operationId: provider-post-register
+      operationId: provider-post-providers
       requestBody:
         content:
           application/json:
@@ -309,12 +309,12 @@ paths:
                           type: integer
                           description: モデルごとの売上
                     description: モデルごとの売上情報
-  /chair/register:
+  /chair/chairs:
     post:
       tags:
         - chair
       summary: 椅子登録を行う
-      operationId: chair-post-register
+      operationId: chair-post-chairs
       requestBody:
         content:
           application/json:
@@ -347,36 +347,27 @@ paths:
                 required:
                   - access_token
                   - id
-  /chair/activate:
+  /chair/activity:
     post:
       tags:
         - chair
-      summary: 椅子が配車受付を開始する
+      summary: 椅子が配車受付を開始・停止する
       description: ""
-      operationId: chair-post-activate
+      operationId: chair-post-activity
       requestBody:
         content:
           application/json:
             schema:
               type: object
+              properties:
+                is_active:
+                  type: boolean
+                  description: 配車受付を開始するか停止するか
+              required:
+                - is_active
       responses:
         "204":
-          description: サービスが椅子が配車受付を開始したことを了解した
-  /chair/deactivate:
-    post:
-      tags:
-        - chair
-      summary: 椅子が配車受付を停止する
-      description: ""
-      operationId: chair-post-deactivate
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "204":
-          description: サービスが椅子が配車受付を停止したことを了解した
+          description: 椅子の配車受付の開始・停止を受理した
   /chair/coordinate:
     post:
       tags:
@@ -391,36 +382,56 @@ paths:
       responses:
         "204":
           description: サービスが椅子の座標を認識した
-  "/chair/requests/{request_id}":
+  "/chair/rides/{ride_id}":
     get:
       tags:
         - chair
-      summary: 椅子が配車要求情報を取得する
+      summary: 椅子がライドの情報を取得する
       description: 椅子向け通知エンドポイントから通知されたidの情報を取得する想定
-      operationId: chair-get-request
+      operationId: chair-get-rides
       parameters:
-        - $ref: "#/components/parameters/request_id"
+        - $ref: "#/components/parameters/ride_id"
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ChairRequest"
+                $ref: "#/components/schemas/RideForChair"
         "404":
           description: 存在しない配車要求、対象の椅子にマッチングされていない配車要求を取得しようとした場合など
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  "/chair/requests/{request_id}/accept":
+  "/chair/rides/{ride_id}/status":
     post:
       tags:
         - chair
-      summary: 椅子が配車要求を受理する
-      operationId: chair-post-request-accept
+      summary: 椅子がライドの状態を更新する
+      operationId: chair-post-ride-status
       parameters:
-        - $ref: "#/components/parameters/request_id"
+        - $ref: "#/components/parameters/ride_id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - MATCHING
+                    - CARRYING
+                    - CANCELED
+                  description: |
+                    ライドの状態
+
+                    MATCHING: マッチングを拒否し、再度マッチング状態に戻す
+                    ENROUTE: マッチングを承認し、乗車位置に向かう
+                    CARRYING: ユーザーが乗車し、椅子が目的地に向かう
+              required:
+                - status
       responses:
         "204":
           description: No Content
@@ -430,61 +441,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  "/chair/requests/{request_id}/deny":
-    post:
-      tags:
-        - chair
-      summary: 椅子が配車要求を拒否する
-      operationId: chair-post-request-deny
-      parameters:
-        - $ref: "#/components/parameters/request_id"
-      responses:
-        "204":
-          description: No Content
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  "/chair/requests/{request_id}/depart":
-    post:
-      tags:
-        - chair
-      summary: 椅子が配車位置から出発する(ユーザーが乗車完了した)
-      operationId: chair-post-request-depart
-      parameters:
-        - name: request_id
-          in: path
-          description: 配車要求ID
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: 椅子が出発した
-        "400":
-          description: 椅子が乗車位置の座標に居ない、既に出発しているなど
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: 存在しない配車要求
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  "/chair/requests/{request_id}/payment":
+  "/chair/rides/{ride_id}/payment":
     post:
       tags:
         - chair
       summary: 支払いを実行する
-      operationId: chair-post-request-payment
+      operationId: chair-post-ride-payment
       parameters:
-        - name: request_id
+        - name: ride_id
           in: path
-          description: 配車要求ID
+          description: ライドID
           required: true
           schema:
             type: string
@@ -516,15 +482,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ChairRequest"
+                $ref: "#/components/schemas/RideForChair"
         "204":
           description: 割り当てられた配車要求が存在しない場合
 components:
   parameters:
-    request_id:
-      name: request_id
+    ride_id:
+      name: ride_id
       in: path
-      description: 配車要求ID
+      description: ライドID
       required: true
       schema:
         type: string
@@ -544,23 +510,23 @@ components:
       required:
         - latitude
         - longitude
-    RequestStatus:
+    RideStatus:
       type: string
       enum:
         - MATCHING
-        - DISPATCHING
-        - DISPATCHED
+        - ENROUTE
+        - PICKUP
         - CARRYING
         - ARRIVED
         - COMPLETED
         - CANCELED
-      title: RequestStatus
+      title: RideStatus
       description: |
-        配車要求ステータス
+        ライドの状態
 
         MATCHING: サービス上でマッチング処理を行なっていて椅子が確定していない
-        DISPATCHING: 椅子が確定し、乗車位置に向かっている
-        DISPATCHED: 椅子が乗車位置に到着して、ユーザーの乗車を待機している
+        ENROUTE: 椅子が確定し、乗車位置に向かっている
+        PICKUP: 椅子が乗車位置に到着して、ユーザーの乗車を待機している
         CARRYING: ユーザーが乗車し、椅子が目的地に向かっている
         ARRIVED: 目的地に到着した
         COMPLETED: ユーザーの決済・椅子評価が完了した
@@ -597,19 +563,19 @@ components:
       required:
         - id
         - name
-    AppRequest:
-      description: App向け配車要求情報
+    RideForApp:
+      description: App向けライド情報
       type: object
       properties:
-        request_id:
+        ride_id:
           type: string
-          description: 配車要求ID
+          description: ライドID
         pickup_coordinate:
           $ref: "#/components/schemas/Coordinate"
         destination_coordinate:
           $ref: "#/components/schemas/Coordinate"
         status:
-          $ref: "#/components/schemas/RequestStatus"
+          $ref: "#/components/schemas/RideStatus"
         chair:
           $ref: "#/components/schemas/Chair"
         created_at:
@@ -619,27 +585,27 @@ components:
           type: number
           description: 配車要求更新日時
       required:
-        - request_id
+        - ride_id
         - pickup_coordinate
         - destination_coordinate
         - status
         - created_at
         - updated_at
-    ChairRequest:
-      description: Chair向け配車要求情報
+    RideForChair:
+      description: Chair向けライド情報
       type: object
       properties:
-        request_id:
+        ride_id:
           type: string
-          description: 配車要求ID
+          description: ライドID
         user:
           $ref: "#/components/schemas/User"
         destination_coordinate:
           $ref: "#/components/schemas/Coordinate"
         status:
-          $ref: "#/components/schemas/RequestStatus"
+          $ref: "#/components/schemas/RideStatus"
       required:
-        - request_id
+        - ride_id
         - user
         - destination_coordinate
     Error:

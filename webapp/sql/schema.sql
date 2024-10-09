@@ -82,30 +82,30 @@ create table payment_tokens
 )
   comment = '決済トークンテーブル';
 
-create table ride_requests
+create table rides
 (
   id                    varchar(26)                                                                                    not null comment '配車/乗車リクエストID',
   user_id               varchar(26)                                                                                    not null comment 'ユーザーID',
   chair_id              varchar(26)                                                                                    null comment '割り当てられた椅子ID',
-  status                enum ('MATCHING', 'DISPATCHING', 'DISPATCHED', 'CARRYING', 'ARRIVED', 'COMPLETED', 'CANCELED') not null comment '状態',
+  status                enum ('MATCHING', 'ENROUTE', 'PICKUP', 'CARRYING', 'ARRIVED', 'COMPLETED', 'CANCELED') not null comment '状態',
   pickup_latitude       integer                                                                                         not null comment '配車位置(経度)',
   pickup_longitude      integer                                                                                         not null comment '配車位置(緯度)',
   destination_latitude  integer                                                                                         not null comment '目的地(経度)',
   destination_longitude integer                                                                                         not null comment '目的地(緯度)',
-  evaluation            integer                                                                                            null comment '評価',
-  requested_at          datetime(6)                                                                                      not null comment '要求日時',
-  matched_at            datetime(6)                                                                                      null comment '椅子割り当て完了日時',
-  dispatched_at         datetime(6)                                                                                      null comment '配車到着日時',
-  rode_at               datetime(6)                                                                                      null comment '乗車日時',
-  arrived_at            datetime(6)                                                                                      null comment '目的地到着日時',
+  evaluation            integer                                                                                         null comment '評価',
+  requested_at          datetime(6)                                                                                     not null comment '要求日時',
+  matched_at            datetime(6)                                                                                     null comment '椅子割り当て完了日時',
+  pickup_arrived_at     datetime(6)                                                                                     null comment '配車到着日時',
+  pickupped_at           datetime(6)                                                                                    null comment '乗車日時',
+  destination_arrived_at datetime(6)                                                                                    null comment '目的地到着日時',
   updated_at            datetime(6)                                                                                      not null comment '状態更新日時',
   primary key (id),
-  constraint ride_requests_chairs_id_fk
+  constraint rides_chairs_id_fk
     foreign key (chair_id) references chairs (id),
-  constraint ride_requests_users_id_fk
+  constraint rides_users_id_fk
     foreign key (user_id) references users (id)
 )
-  comment = '配車/乗車リクエスト情報テーブル';
+  comment = '配車/乗車情報テーブル';
 
 create table providers
 (

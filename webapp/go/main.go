@@ -72,41 +72,38 @@ func setup() http.Handler {
 
 	// app handlers
 	{
-		mux.HandleFunc("POST /app/register", appPostRegister)
+		mux.HandleFunc("POST /app/users", postAppUsers)
 
 		authedMux := mux.With(appAuthMiddleware)
-		authedMux.HandleFunc("POST /app/payment-methods", appPostPaymentMethods)
-		authedMux.HandleFunc("POST /app/requests", appPostRequests)
-		authedMux.HandleFunc("GET /app/requests/{request_id}", appGetRequest)
-		authedMux.HandleFunc("POST /app/requests/{request_id}/evaluate", appPostRequestEvaluate)
+		authedMux.HandleFunc("POST /app/payment-methods", postAppPaymentMethods)
+		authedMux.HandleFunc("POST /app/rides", postAppRides)
+		authedMux.HandleFunc("GET /app/rides/{ride_id}", getAppRidesRideID)
+		authedMux.HandleFunc("POST /app/rides/{ride_id}/evaluation", postAppRidesRideIDEvaluation)
 		//authedMux.HandleFunc("GET /app/notification", appGetNotificationSSE)
-		authedMux.HandleFunc("GET /app/notification", appGetNotification)
+		authedMux.HandleFunc("GET /app/notification", getAppNotification)
 	}
 
 	// provider handlers
 	{
-		mux.HandleFunc("POST /provider/register", providerPostRegister)
+		mux.HandleFunc("POST /provider/providers", postProviderProviders)
 
 		authedMux := mux.With(providerAuthMiddleware)
-		authedMux.HandleFunc("GET /provider/sales", providerGetSales)
+		authedMux.HandleFunc("GET /provider/sales", getProviderSales)
 	}
 
 	// chair handlers
 	{
 		authedMux1 := mux.With(providerAuthMiddleware)
-		authedMux1.HandleFunc("POST /chair/register", chairPostRegister)
+		authedMux1.HandleFunc("POST /chair/chairs", postChairChairs)
 
 		authedMux2 := mux.With(chairAuthMiddleware)
-		authedMux2.HandleFunc("POST /chair/activate", chairPostActivate)
-		authedMux2.HandleFunc("POST /chair/deactivate", chairPostDeactivate)
-		authedMux2.HandleFunc("POST /chair/coordinate", chairPostCoordinate)
+		authedMux2.HandleFunc("POST /chair/activity", postChairActivity)
+		authedMux2.HandleFunc("POST /chair/coordinate", postChairCoordinate)
 		//authedMux2.HandleFunc("GET /chair/notification", chairGetNotificationSSE)
-		authedMux2.HandleFunc("GET /chair/notification", chairGetNotification)
-		authedMux2.HandleFunc("GET /chair/requests/{request_id}", chairGetRequest)
-		authedMux2.HandleFunc("POST /chair/requests/{request_id}/accept", chairPostRequestAccept)
-		authedMux2.HandleFunc("POST /chair/requests/{request_id}/deny", chairPostRequestDeny)
-		authedMux2.HandleFunc("POST /chair/requests/{request_id}/depart", chairPostRequestDepart)
-		authedMux2.HandleFunc("POST /chair/requests/{request_id}/payment", chairPostRequestPayment)
+		authedMux2.HandleFunc("GET /chair/notification", getChairNotification)
+		authedMux2.HandleFunc("GET /chair/rides/{ride_id}", getChairRidesRideID)
+		authedMux2.HandleFunc("POST /chair/rides/{ride_id}/status", postChairRidesRideIDStatus)
+		authedMux2.HandleFunc("POST /chair/rides/{ride_id}/payment", postChairRidesRideIDPayment)
 	}
 
 	return mux
@@ -115,9 +112,10 @@ func setup() http.Handler {
 func postInitialize(w http.ResponseWriter, r *http.Request) {
 	tables := []string{
 		"chair_locations",
-		"ride_requests",
+		"rides",
 		"users",
 		"chairs",
+		"providers",
 	}
 	tx, err := db.Beginx()
 	if err != nil {
