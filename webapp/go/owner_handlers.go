@@ -73,7 +73,7 @@ type ModelSales struct {
 func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 	owner := r.Context().Value("owner").(*Owner)
 
-	since := time.Time{}
+	since := time.Unix(0, 0)
 	until := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 	if r.URL.Query().Get("since") != "" {
 		parsed, err := time.Parse(time.RFC3339Nano, r.URL.Query().Get("since"))
