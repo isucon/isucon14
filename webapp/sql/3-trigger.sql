@@ -38,7 +38,7 @@ BEGIN
   -- 各 dispatching -> dispatched サイクルごとの距離と時間を計算
   dispatching_stats AS (
     SELECT
-      SUM(SQRT(POW(loc2.x - loc1.x, 2) + POW(loc2.y - loc1.y, 2))) AS dispatching_total_distance,
+      SUM((loc2.latitude - loc1.latitude) - (loc2.longitude - loc1.longitude)) AS dispatching_total_distance,
       SUM(TIMESTAMPDIFF(SECOND, loc1.created_at, loc2.created_at)) AS dispatching_total_times
     FROM chair_locations loc1
     JOIN chair_locations loc2 ON loc1.chair_id = loc2.chair_id
@@ -50,7 +50,7 @@ BEGIN
   -- 各 carrying -> arrived サイクルごとの距離と時間を計算
   carrying_stats AS (
     SELECT
-      SUM(SQRT(POW(loc2.x - loc1.x, 2) + POW(loc2.y - loc1.y, 2))) AS carrying_total_distance,
+      SUM((loc2.latitude - loc1.latitude) - (loc2.longitude - loc1.longitude)) AS carrying_total_distance,
       SUM(TIMESTAMPDIFF(SECOND, loc1.created_at, loc2.created_at)) AS carrying_total_times
     FROM chair_locations loc1
     JOIN chair_locations loc2 ON loc1.chair_id = loc2.chair_id
