@@ -3,5 +3,8 @@
   "editor.codeActionsOnSave": {
     "source.organizeImports": "always"
   },
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "[go]": {
+    "editor.defaultFormatter": "golang.go"
+  }
 }

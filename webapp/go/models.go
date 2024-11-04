@@ -5,6 +5,30 @@ import (
 	"time"
 )
 
+type ChairModel struct {
+	Name  string `db:"name"`
+	Speed int    `db:"speed"`
+}
+
+type Chair struct {
+	ID          string    `db:"id"`
+	OwnerID     string    `db:"owner_id"`
+	Name        string    `db:"name"`
+	Model       string    `db:"model"`
+	IsActive    bool      `db:"is_active"`
+	AccessToken string    `db:"access_token"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
+}
+
+type ChairLocation struct {
+	ID        string    `db:"id"`
+	ChairID   string    `db:"chair_id"`
+	Latitude  int       `db:"latitude"`
+	Longitude int       `db:"longitude"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
 type User struct {
 	ID          string    `db:"id"`
 	Username    string    `db:"username"`
@@ -22,26 +46,9 @@ type PaymentToken struct {
 	CreatedAt time.Time `db:"created_at"`
 }
 
-type Chair struct {
-	ID          string    `db:"id"`
-	OwnerID     string    `db:"owner_id"`
-	Name        string    `db:"name"`
-	AccessToken string    `db:"access_token"`
-	Model       string    `db:"model"`
-	IsActive    bool      `db:"is_active"`
-	CreatedAt   time.Time `db:"created_at"`
-	UpdatedAt   time.Time `db:"updated_at"`
-}
-
-type ChairModel struct {
-	Name  string `db:"name"`
-	Speed int    `db:"speed"`
-}
-
 type RideRequest struct {
 	ID                   string         `db:"id"`
 	UserID               string         `db:"user_id"`
-	DriverID             string         `db:"driver_id"`
 	ChairID              sql.NullString `db:"chair_id"`
 	Status               string         `db:"status"`
 	PickupLatitude       int            `db:"pickup_latitude"`
@@ -55,14 +62,6 @@ type RideRequest struct {
 	RodeAt               *time.Time     `db:"rode_at"`
 	ArrivedAt            *time.Time     `db:"arrived_at"`
 	UpdatedAt            time.Time      `db:"updated_at"`
-}
-
-type ChairLocation struct {
-	ID        string    `db:"id"`
-	ChairID   string    `db:"chair_id"`
-	Latitude  int       `db:"latitude"`
-	Longitude int       `db:"longitude"`
-	CreatedAt time.Time `db:"created_at"`
 }
 
 type Owner struct {

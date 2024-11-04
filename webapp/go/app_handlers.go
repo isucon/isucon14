@@ -11,31 +11,31 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-type postAppRegisterRequest struct {
+type appPostRegisterRequest struct {
 	Username    string `json:"username"`
 	FirstName   string `json:"firstname"`
 	LastName    string `json:"lastname"`
 	DateOfBirth string `json:"date_of_birth"`
 }
 
-type postAppRegisterResponse struct {
+type appPostRegisterResponse struct {
 	ID string `json:"id"`
 }
 
 func appPostRegister(w http.ResponseWriter, r *http.Request) {
-	req := &postAppRegisterRequest{}
+	req := &appPostRegisterRequest{}
 	if err := bindJSON(r, req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-
-	userID := ulid.Make().String()
-
 	if req.Username == "" || req.FirstName == "" || req.LastName == "" || req.DateOfBirth == "" {
 		writeError(w, http.StatusBadRequest, errors.New("required fields(username, firstname, lastname, date_of_birth) are empty"))
 		return
 	}
+
+	userID := ulid.Make().String()
 	accessToken := secureRandomStr(32)
+
 	_, err := db.Exec(
 		"INSERT INTO users (id, username, firstname, lastname, date_of_birth, access_token) VALUES (?, ?, ?, ?, ?, ?)",
 		userID, req.Username, req.FirstName, req.LastName, req.DateOfBirth, accessToken,
@@ -52,19 +52,23 @@ func appPostRegister(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 	})
 
-	writeJSON(w, http.StatusCreated, &postAppRegisterResponse{
+	writeJSON(w, http.StatusCreated, &appPostRegisterResponse{
 		ID: userID,
 	})
 }
 
-type postAppPaymentMethodsRequest struct {
+type appPostPaymentMethodsRequest struct {
 	Token string `json:"token"`
 }
 
 func appPostPaymentMethods(w http.ResponseWriter, r *http.Request) {
-	req := &postAppPaymentMethodsRequest{}
+	req := &appPostPaymentMethodsRequest{}
 	if err := bindJSON(r, req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Token == "" {
+		writeError(w, http.StatusBadRequest, errors.New("token is required but was empty"))
 		return
 	}
 
@@ -83,28 +87,27 @@ func appPostPaymentMethods(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type postAppRequestsRequest struct {
+type appPostRequestsRequest struct {
 	PickupCoordinate      *Coordinate `json:"pickup_coordinate"`
 	DestinationCoordinate *Coordinate `json:"destination_coordinate"`
 }
 
-type postAppRequestsResponse struct {
+type appPostRequestsResponse struct {
 	RequestID string `json:"request_id"`
 }
 
 func appPostRequests(w http.ResponseWriter, r *http.Request) {
-	req := &postAppRequestsRequest{}
+	req := &appPostRequestsRequest{}
 	if err := bindJSON(r, req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-
-	user := r.Context().Value("user").(*User)
-
 	if req.PickupCoordinate == nil || req.DestinationCoordinate == nil {
 		writeError(w, http.StatusBadRequest, errors.New("required fields(pickup_coordinate, destination_coordinate) are empty"))
 		return
 	}
+
+	user := r.Context().Value("user").(*User)
 	requestID := ulid.Make().String()
 
 	tx, err := db.Beginx()
@@ -138,25 +141,9 @@ func appPostRequests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusAccepted, &postAppRequestsResponse{
+	writeJSON(w, http.StatusAccepted, &appPostRequestsResponse{
 		RequestID: requestID,
 	})
-}
-
-type appChair struct {
-	ID    string        `json:"id"`
-	Name  string        `json:"name"`
-	Model string        `json:"model"`
-	Stats appChairStats `json:"stats"`
-}
-
-type appChairStats struct {
-	// 最近の乗車履歴
-	RecentRides []recentRide `json:"recent_rides"`
-
-	// 累計の情報
-	TotalRidesCount    int     `json:"total_rides_count"`
-	TotalEvaluationAvg float64 `json:"total_evaluation_avg"`
 }
 
 type recentRide struct {
@@ -168,7 +155,23 @@ type recentRide struct {
 	Evaluation            int           `json:"evaluation"`
 }
 
-type getAppRequestResponse struct {
+type appChairStats struct {
+	// 最近の乗車履歴
+	RecentRides []recentRide `json:"recent_rides"`
+
+	// 累計の情報
+	TotalRidesCount    int     `json:"total_rides_count"`
+	TotalEvaluationAvg float64 `json:"total_evaluation_avg"`
+}
+
+type appChair struct {
+	ID    string        `json:"id"`
+	Name  string        `json:"name"`
+	Model string        `json:"model"`
+	Stats appChairStats `json:"stats"`
+}
+
+type appGetRequestResponse struct {
 	RequestID             string     `json:"request_id"`
 	PickupCoordinate      Coordinate `json:"pickup_coordinate"`
 	DestinationCoordinate Coordinate `json:"destination_coordinate"`
@@ -203,7 +206,7 @@ func appGetRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := &getAppRequestResponse{
+	response := &appGetRequestResponse{
 		RequestID:             rideRequest.ID,
 		PickupCoordinate:      Coordinate{Latitude: rideRequest.PickupLatitude, Longitude: rideRequest.PickupLongitude},
 		DestinationCoordinate: Coordinate{Latitude: rideRequest.DestinationLatitude, Longitude: rideRequest.DestinationLongitude},
@@ -214,7 +217,7 @@ func appGetRequest(w http.ResponseWriter, r *http.Request) {
 
 	if rideRequest.ChairID.Valid {
 		chair := &Chair{}
-		err := db.Get(
+		err := tx.Get(
 			chair,
 			`SELECT * FROM chairs WHERE id = ?`,
 			rideRequest.ChairID,
@@ -317,20 +320,25 @@ func abs(a int) int {
 	return a
 }
 
-type postAppEvaluateRequest struct {
+type appPostEvaluateRequest struct {
 	Evaluation int `json:"evaluation"`
 }
 
-type postAppEvaluateResponse struct {
+type appPostEvaluateResponse struct {
 	Fare        int       `json:"fare"`
 	CompletedAt time.Time `json:"completed_at"`
 }
 
 func appPostRequestEvaluate(w http.ResponseWriter, r *http.Request) {
 	requestID := r.PathValue("request_id")
-	postAppEvaluateRequest := &postAppEvaluateRequest{}
+
+	postAppEvaluateRequest := &appPostEvaluateRequest{}
 	if err := bindJSON(r, postAppEvaluateRequest); err != nil {
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if postAppEvaluateRequest.Evaluation < 1 || postAppEvaluateRequest.Evaluation > 5 {
+		writeError(w, http.StatusBadRequest, errors.New("evaluation must be between 1 and 5"))
 		return
 	}
 
@@ -413,22 +421,33 @@ func appPostRequestEvaluate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, &postAppEvaluateResponse{
+	writeJSON(w, http.StatusOK, &appPostEvaluateResponse{
 		Fare:        calculateSale(*rideRequest),
 		CompletedAt: rideRequest.UpdatedAt,
 	})
 }
 
+type appGetNotificationResponse struct {
+	RequestID             string     `json:"request_id"`
+	PickupCoordinate      Coordinate `json:"pickup_coordinate"`
+	DestinationCoordinate Coordinate `json:"destination_coordinate"`
+	Status                string     `json:"status"`
+	Chair                 *appChair  `json:"chair,omitempty"`
+	CreatedAt             int64      `json:"created_at"`
+	UpdateAt              int64      `json:"updated_at"`
+}
+
 func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value("user").(*User)
 
-	rideRequest := &RideRequest{}
 	tx, err := db.Beginx()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	defer tx.Rollback()
+
+	rideRequest := &RideRequest{}
 	if err := tx.Get(rideRequest, `SELECT * FROM ride_requests WHERE user_id = ? ORDER BY requested_at DESC LIMIT 1`, user.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			w.WriteHeader(http.StatusNoContent)
@@ -438,7 +457,7 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := &getAppRequestResponse{
+	response := &appGetNotificationResponse{
 		RequestID: rideRequest.ID,
 		PickupCoordinate: Coordinate{
 			Latitude:  rideRequest.PickupLatitude,
@@ -525,7 +544,7 @@ func appGetNotificationSSE(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				if err := writeSSE(w, "matched", &getAppRequestResponse{
+				if err := writeSSE(w, "matched", &appGetNotificationResponse{
 					RequestID: rideRequest.ID,
 					PickupCoordinate: Coordinate{
 						Latitude:  rideRequest.PickupLatitude,

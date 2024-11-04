@@ -34,7 +34,8 @@ paths:
                 properties:
                   language:
                     type: string
-                    enum:
+                    description: |
+                      実装言語
                       - go
                       - perl
                       - php
@@ -42,7 +43,6 @@ paths:
                       - ruby
                       - rust
                       - node
-                    description: 実装言語
                 required:
                   - language
   /app/register:
@@ -113,6 +113,12 @@ paths:
       responses:
         "204":
           description: 決済トークンの登録に成功した
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /app/requests:
     post:
       tags:
@@ -147,6 +153,18 @@ paths:
                     description: 配車要求ID
                 required:
                   - request_id
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/app/requests/{request_id}":
     get:
       tags:
@@ -794,7 +812,7 @@ components:
                     description: 移動距離
                   duration:
                     type: integer
-                    description: 移動時間
+                    description: 移動時間 (ナノ秒)
                   evaluation:
                     type: integer
                     description: 評価

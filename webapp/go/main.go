@@ -118,6 +118,10 @@ type postInitializeRequest struct {
 	PaymentServer string `json:"payment_server"`
 }
 
+type postInitializeResponse struct {
+	Language string `json:"language"`
+}
+
 func postInitialize(w http.ResponseWriter, r *http.Request) {
 	req := &postInitializeRequest{}
 	if err := bindJSON(r, req); err != nil {
@@ -131,7 +135,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	paymentURL = req.PaymentServer
-	writeJSON(w, http.StatusOK, map[string]string{"language": "go"})
+	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
 }
 
 type Coordinate struct {
