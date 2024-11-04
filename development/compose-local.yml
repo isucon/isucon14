@@ -1,6 +1,10 @@
+version: "3.8"
+
 services:
   db:
-    image: mysql:8
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       ENV: local-dev
       MYSQL_ROOT_PASSWORD: isucon

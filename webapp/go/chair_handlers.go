@@ -115,12 +115,14 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (?, ?, ?, ?)`,
 		chairLocationID, chair.ID, req.Latitude, req.Longitude,
 	); err != nil {
+		fmt.Printf("failed to insert chair location: %v\n", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	location := &ChairLocation{}
 	if err := tx.Get(location, `SELECT * FROM chair_locations WHERE id = ?`, chairLocationID); err != nil {
+		fmt.Printf("failed to get chair location: %v\n", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -155,6 +157,7 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(); err != nil {
+		fmt.Printf("failed to commit transaction: %v\n", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

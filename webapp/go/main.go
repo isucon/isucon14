@@ -131,6 +131,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if out, err := exec.Command("../sql/init.sh").CombinedOutput(); err != nil {
+		fmt.Printf("failed to initialize: %s: %v\n", string(out), err)
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to initialize: %s: %w", string(out), err))
 		return
 	}
