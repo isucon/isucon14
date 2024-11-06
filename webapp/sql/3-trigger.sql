@@ -1,3 +1,5 @@
+USE isuride;
+
 DELIMITER //
 
 CREATE TRIGGER update_statistics
