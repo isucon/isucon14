@@ -191,6 +191,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	chair := r.Context().Value("chair").(*Chair)
 
 	if _, err := tx.Exec("SELECT * FROM chairs WHERE id = ? FOR UPDATE", chair.ID); err != nil {
+		fmt.Printf("failed to lock chair: %v\n", chair.ID)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -202,6 +203,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, sql.ErrNoRows) {
 			found = false
 		} else {
+			fmt.Printf("failed to get ride request: %v\n", chair.ID)
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -210,6 +212,7 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	if found {
 		status, err = getLatestRideRequestStatus(tx, rideRequest.ID)
 		if err != nil {
+			fmt.Printf("failed to get latest ride request status: %v\n", chair.ID)
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -223,11 +226,13 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
+			fmt.Printf("failed to get ride request for match\n")
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 
 		if _, err := tx.Exec("UPDATE ride_requests SET chair_id = ? WHERE id = ?", chair.ID, matchRequest.ID); err != nil {
+			fmt.Printf("failed to update ride request: chair_id=%v, request_id=%v\n", chair.ID, matchRequest.ID)
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -241,11 +246,13 @@ func chairGetNotification(w http.ResponseWriter, r *http.Request) {
 	user := &User{}
 	err = tx.Get(user, "SELECT * FROM users WHERE id = ?", rideRequest.UserID)
 	if err != nil {
+		fmt.Printf("failed to get user: %v\n", rideRequest.UserID)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
+		fmt.Printf("failed to commit transaction: %v\n", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

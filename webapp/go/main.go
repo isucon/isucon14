@@ -183,6 +183,8 @@ func writeSSE(w http.ResponseWriter, event string, data interface{}) error {
 }
 
 func writeError(w http.ResponseWriter, statusCode int, err error) {
+	fmt.Fprintln(os.Stderr, err)
+
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	w.WriteHeader(statusCode)
 	buf, marshalError := json.Marshal(map[string]string{"message": err.Error()})
@@ -192,8 +194,6 @@ func writeError(w http.ResponseWriter, statusCode int, err error) {
 		return
 	}
 	w.Write(buf)
-
-	fmt.Fprintln(os.Stderr, err)
 }
 
 func secureRandomStr(b int) string {
