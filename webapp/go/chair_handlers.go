@@ -103,15 +103,8 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 
 	chair := r.Context().Value("chair").(*Chair)
 
-	tx, err := db.Beginx()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	defer tx.Rollback()
-
 	chairLocationID := ulid.Make().String()
-	if _, err := tx.Exec(
+	if _, err := db.Exec(
 		`INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (?, ?, ?, ?)`,
 		chairLocationID, chair.ID, req.Latitude, req.Longitude,
 	); err != nil {
@@ -121,45 +114,39 @@ func chairPostCoordinate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	location := &ChairLocation{}
-	if err := tx.Get(location, `SELECT * FROM chair_locations WHERE id = ?`, chairLocationID); err != nil {
+	if err := db.Get(location, `SELECT * FROM chair_locations WHERE id = ?`, chairLocationID); err != nil {
 		fmt.Printf("failed to get chair location: %v\n", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	rideRequest := &RideRequest{}
-	if err := tx.Get(rideRequest, `SELECT * FROM ride_requests WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
+	if err := db.Get(rideRequest, `SELECT * FROM ride_requests WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 	} else {
-		status, err := getLatestRideRequestStatus(tx, rideRequest.ID)
+		status, err := getLatestRideRequestStatus(db, rideRequest.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 		if status != "COMPLETED" && status != "CANCELED" {
 			if req.Latitude == rideRequest.PickupLatitude && req.Longitude == rideRequest.PickupLongitude && status == "DISPATCHING" {
-				if _, err := tx.Exec("INSERT INTO ride_request_statuses (id, ride_request_id, status) VALUES (?, ?, ?)", ulid.Make().String(), rideRequest.ID, "DISPATCHED"); err != nil {
+				if _, err := db.Exec("INSERT INTO ride_request_statuses (id, ride_request_id, status) VALUES (?, ?, ?)", ulid.Make().String(), rideRequest.ID, "DISPATCHED"); err != nil {
 					writeError(w, http.StatusInternalServerError, err)
 					return
 				}
 			}
 
 			if req.Latitude == rideRequest.DestinationLatitude && req.Longitude == rideRequest.DestinationLongitude && status == "CARRYING" {
-				if _, err := tx.Exec("INSERT INTO ride_request_statuses (id, ride_request_id, status) VALUES (?, ?, ?)", ulid.Make().String(), rideRequest.ID, "ARRIVED"); err != nil {
+				if _, err := db.Exec("INSERT INTO ride_request_statuses (id, ride_request_id, status) VALUES (?, ?, ?)", ulid.Make().String(), rideRequest.ID, "ARRIVED"); err != nil {
 					writeError(w, http.StatusInternalServerError, err)
 					return
 				}
 			}
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		fmt.Printf("failed to commit transaction: %v\n", err)
-		writeError(w, http.StatusInternalServerError, err)
-		return
 	}
 
 	writeJSON(w, http.StatusOK, &chairPostCoordinateResponse{
