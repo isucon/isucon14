@@ -121,13 +121,11 @@ CREATE TABLE coupons
   COMMENT 'クーポンテーブル';
 
 DROP TABLE IF EXISTS statistics;
-create table statistics
+CREATE TABLE statistics
 (
-  chair_id                varchar(26) not null comment '椅子ID',
-  dispatch_total_distance integer     not null comment '配車距離',
-  dispatch_total_time     integer     not null comment '配車時間',
-  carry_total_distance    integer     not null comment '乗車距離',
-  carry_total_time        integer     not null comment '乗車時間',
-  primary key (chair_id)
+  chair_id                VARCHAR(26) not null comment '椅子ID',
+  total_distance          INTEGER     not null comment '合計移動距離',
+  last_chair_location_id  VARCHAR(26) not null comment '統計データを更新した最新のchair_locations のID',
+  PRIMARY KEY (chair_id)
 )
   comment = '椅子の統計情報テーブル';
