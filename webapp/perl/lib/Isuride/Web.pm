@@ -31,15 +31,14 @@ sub dbh ($self) {
     $self->{dbh} //= connect_db();
 }
 
-use constant AppHandler => qq(app_auth_middleware);
+use constant AppAuthMiddleware => qw(app_auth_middleware);
 
 {
-    post '/api/app/register' => sub { };
-
     #  app handlers
-    get '/app/test' => [AppHandler] => \&Isuride::Handler::App::test;
-    post '/app/app/payment-methods' => [AppHandler] => \&Isuride::Handler::App::app_post_payment_methods;
-    get '/app/requests/{request_id}' => [AppHandler] => \&app_get_resuest;
+    post '/api/app/users' => \&Isuride::Handler::App::app_post_users;
+
+    post '/api/app/payment-methods' => [AppAuthMiddleware] => \&Isuride::Handler::App::app_post_payment_methods;
+    get '/app/requests/{request_id}' => [AppAuthMiddleware] => \&app_get_resuest;
 }
 
 sub default ($self, $c) {

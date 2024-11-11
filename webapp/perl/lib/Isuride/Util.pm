@@ -5,6 +5,8 @@ use utf8;
 use Exporter 'import';
 
 our @EXPORT_OK = qw(
+    secure_random_str
+
     check_params
 );
 
