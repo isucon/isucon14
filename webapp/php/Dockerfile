@@ -11,6 +11,8 @@ RUN apt-get clean \
 
 RUN docker-php-ext-install pdo_mysql
 
+RUN pecl install xdebug && docker-php-ext-enable xdebug
+
 RUN locale-gen en_US.UTF-8
 RUN useradd --uid=1001 --create-home isucon
 USER isucon
