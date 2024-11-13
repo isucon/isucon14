@@ -41,6 +41,7 @@ return function (App $app, array $config) {
     $app->group('/api/owner', function ($app) use ($database) {
         $app->get('/sales', new Handlers\Owner\GetSales($database));
         $app->get('/chairs', new Handlers\Owner\GetChairs($database));
+        $app->get('/chairs/{chair_id}', new Handlers\Owner\GetChairDetail($database));
     })->addMiddleware(
         new Middlewares\OwnerAuthMiddleware($database, $app->getResponseFactory())
     );
