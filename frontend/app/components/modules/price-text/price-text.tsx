@@ -8,8 +8,8 @@ type PriceTextProps = Omit<
   value: number;
 };
 
+const formatter = new Intl.NumberFormat("ja-JP");
+
 export const PriceText: FC<PriceTextProps> = ({ value, ...rest }) => {
-  return (
-    <Text {...rest}>{new Intl.NumberFormat("ja-JP").format(value)} 円</Text>
-  );
+  return <Text {...rest}>{formatter.format(value)} 円</Text>;
 };
