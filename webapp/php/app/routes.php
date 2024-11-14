@@ -33,6 +33,7 @@ return function (App $app, array $config) {
     $app->group('/api/app', function ($app) use ($database) {
         $app->post('/payment-methods', new Handlers\App\PostPaymentMethods($database));
         $app->get('/rides', new Handlers\App\GetRides($database));
+        $app->post('/rides', new Handlers\App\PostRides($database));
     })->addMiddleware(
         new Middlewares\AppAuthMiddleware($database, $app->getResponseFactory())
     );

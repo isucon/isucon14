@@ -54,15 +54,83 @@ abstract class AbstractHttpHandler
         );
     }
 
+    protected function calculateDistance(
+        int $aLatitude,
+        int $aLongitude,
+        int $bLatitude,
+        int $bLongitude
+    ): int {
+        return abs($aLatitude - $bLatitude) + abs($aLongitude - $bLongitude);
+    }
+
     protected function calculateFare(
         int $pickupLatitude,
         int $pickupLongitude,
         int $destLatitude,
         int $destLongitude
     ): int {
-        $latDiff = max($destLatitude - $pickupLatitude, $pickupLatitude - $destLatitude);
-        $lonDiff = max($destLongitude - $pickupLongitude, $pickupLongitude - $destLongitude);
-        $meteredFare = self::FARE_PER_DISTANCE * ($latDiff + $lonDiff);
+        $meteredFare = self::FARE_PER_DISTANCE * $this->calculateDistance(
+            $pickupLatitude,
+            $pickupLongitude,
+            $destLatitude,
+            $destLongitude
+        );
         return self::INITIAL_FARE + $meteredFare;
+    }
+
+    protected function calculateDiscountedFare(
+        \PDO $db,
+        string $userId,
+        ?Ride $ride,
+        int $pickupLatitude,
+        int $pickupLongitude,
+        int $destLatitude,
+        int $destLongitude
+    ): int {
+        $discount = 0;
+        if ($ride !== null) {
+            $destLatitude = $ride->destinationLatitude;
+            $destLongitude = $ride->destinationLongitude;
+            $pickupLatitude = $ride->pickupLatitude;
+            $pickupLongitude = $ride->pickupLongitude;
+            // すでにクーポンが紐づいているならそれの割引額を参照
+            $stmt = $db->prepare('SELECT * FROM coupons WHERE used_by = ?');
+            $stmt->bindValue(1, $ride->id, \PDO::PARAM_STR);
+            $stmt->execute();
+            $coupon = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($coupon !== false) {
+                $discount = $coupon['discount'];
+            }
+        } else {
+            // 初回利用クーポンを最優先で使う
+            $stmt = $db->prepare(
+                'SELECT * FROM coupons WHERE user_id = ? AND code = \'CP_NEW2024\' AND used_by IS NULL'
+            );
+            $stmt->bindValue(1, $userId, \PDO::PARAM_STR);
+            $stmt->execute();
+            $coupon = $stmt->fetch(\PDO::FETCH_ASSOC);
+            // 無いなら他のクーポンを付与された順番に使う
+            if ($coupon === false) {
+                $stmt = $db->prepare(
+                    'SELECT * FROM coupons WHERE user_id = ? AND used_by IS NULL ORDER BY created_at LIMIT 1'
+                );
+                $stmt->bindValue(1, $userId, \PDO::PARAM_STR);
+                $stmt->execute();
+                $coupon = $stmt->fetch(\PDO::FETCH_ASSOC);
+                if ($coupon !== false) {
+                    $discount = $coupon['discount'];
+                }
+            } else {
+                $discount = $coupon['discount'];
+            }
+        }
+        $meteredFare = self::FARE_PER_DISTANCE * $this->calculateDistance(
+            $pickupLatitude,
+            $pickupLongitude,
+            $destLatitude,
+            $destLongitude
+        );
+        $discountedMeteredFare = max($meteredFare - $discount, 0);
+        return self::INITIAL_FARE + $discountedMeteredFare;
     }
 }

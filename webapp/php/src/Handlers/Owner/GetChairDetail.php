@@ -43,7 +43,6 @@ class GetChairDetail extends AbstractHttpHandler
             );
         }
         $chairId = $args['chair_id'];
-        /** @var Owner $owner */
         $owner = $request->getAttribute('owner');
         try {
             $stmt = $this->db->prepare(
