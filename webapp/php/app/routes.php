@@ -51,6 +51,7 @@ return function (App $app, array $config) {
     $app->group('/api/chair', function ($app) use ($database) {
         $app->post('activity', new Handlers\Chair\PostActivity($database));
         $app->post('coordinate', new Handlers\Chair\PostCoordinate($database));
+        $app->get('notification', new Handlers\Chair\GetNotification($database));
     })->addMiddleware(
         new Middlewares\ChairAuthMiddleware($database, $app->getResponseFactory())
     );
