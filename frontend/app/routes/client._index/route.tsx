@@ -128,7 +128,7 @@ export default function Index() {
           placeholder="目的地を選択する"
           label="目的地"
         />
-        {estimatePrice !== undefined && (
+        {estimatePrice && (
           <div className="flex mt-4">
             <Text>推定運賃: </Text>
             <PriceText className="px-4" value={estimatePrice.fare} />
