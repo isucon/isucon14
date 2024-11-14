@@ -1,10 +1,14 @@
 import type { MetaFunction } from "@remix-run/node";
-import { useCallback, useRef, useState } from "react";
-import { fetchAppPostRides } from "~/apiClient/apiComponents";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  fetchAppPostRides,
+  fetchAppPostRidesEstimatedFare,
+} from "~/apiClient/apiComponents";
 import { Coordinate } from "~/apiClient/apiSchemas";
 import { useOnClickOutside } from "~/components/hooks/use-on-click-outside";
 import { LocationButton } from "~/components/modules/location-button/location-button";
 import { Map } from "~/components/modules/map/map";
+import { PriceText } from "~/components/modules/price-text/price-text";
 import { Button } from "~/components/primitives/button/button";
 import { Modal } from "~/components/primitives/modal/modal";
 import { Text } from "~/components/primitives/text/text";
@@ -21,6 +25,7 @@ export const meta: MetaFunction = () => {
 };
 
 type Action = "from" | "to";
+type EstimatePrice = { fare: number; discount: number };
 
 export default function Index() {
   const data = useClientAppRequestContext();
@@ -29,6 +34,7 @@ export default function Index() {
   const [selectedLocation, setSelectedLocation] = useState<Coordinate>();
   const [currentLocation, setCurrentLocation] = useState<Coordinate>();
   const [destLocation, setDestLocation] = useState<Coordinate>();
+  const [estimatePrice, setEstimatePrice] = useState<EstimatePrice>();
 
   const [isSelectorModalOpen, setIsSelectorModalOpen] = useState(false);
   const selectorModalRef = useRef<HTMLElement & { close: () => void }>(null);
@@ -73,6 +79,26 @@ export default function Index() {
     }).then((res) => setRequestId(res.ride_id));
   }, [data, currentLocation, destLocation]);
 
+  useEffect(() => {
+    if (!currentLocation || !destLocation) {
+      return;
+    }
+
+    fetchAppPostRidesEstimatedFare({
+      body: {
+        pickup_coordinate: currentLocation,
+        destination_coordinate: destLocation,
+      },
+    })
+      .then((res) =>
+        setEstimatePrice({ fare: res.fare, discount: res.discount }),
+      )
+      .catch((err) => {
+        console.error(err);
+        setEstimatePrice(undefined);
+      });
+  }, [currentLocation, destLocation]);
+
   useOnClickOutside(selectorModalRef, handleSelectorModalClose);
 
   return (
@@ -102,6 +128,15 @@ export default function Index() {
           placeholder="目的地を選択する"
           label="目的地"
         />
+        {estimatePrice !== undefined && (
+          <div className="flex mt-4">
+            <Text>推定運賃: </Text>
+            <PriceText className="px-4" value={estimatePrice.fare} />
+            <Text>(割引額: </Text>
+            <PriceText value={estimatePrice.discount} />
+            <Text>)</Text>
+          </div>
+        )}
         <Button
           variant="primary"
           className="w-full mt-6 font-bold"
