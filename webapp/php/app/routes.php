@@ -52,6 +52,7 @@ return function (App $app, array $config) {
         $app->post('activity', new Handlers\Chair\PostActivity($database));
         $app->post('coordinate', new Handlers\Chair\PostCoordinate($database));
         $app->get('notification', new Handlers\Chair\GetNotification($database));
+        $app->get('rides/{ride_id}', new Handlers\Chair\GetRideRequest($database));
     })->addMiddleware(
         new Middlewares\ChairAuthMiddleware($database, $app->getResponseFactory())
     );
