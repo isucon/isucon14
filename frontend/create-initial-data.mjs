@@ -4,6 +4,12 @@
 
 import { writeFileSync } from "fs";
 
+const  getCookieValue = (cookieString, cookieName) => {
+  const regex = new RegExp(`(?:^|; )${cookieName}=([^;]*)`);
+  const match = cookieString.match(regex);
+  return match ? match[1] : null; // 値が見つかった場合は返す、見つからなければ null
+}
+
 const create = async() => {
   const candidates = [
     {name: "オーナー1", chairs: [{
@@ -38,13 +44,12 @@ const create = async() => {
 
     const chairRegisterToken = json.chair_register_token;
 
-    console.log('check: ownerFetch', ownerFetch.headers["Cookie"])
+    console.log('check: ownerFetch', ownerFetch.headers.get("set-cookie"),  ownerFetch.headers.keys())
     // set-cookie ヘッダーを取得
-    const cookies = ownerFetch.headers.raw()['set-cookie'];
-    console.log('All Cookies:', cookies);
+    const cookie = ownerFetch.headers.get('set-cookie');
 
     // owner_session クッキーを探す
-    const ownerSessionCookie = cookies.find(cookie => cookie.startsWith('owner_session='));
+    const ownerSessionCookie = getCookieValue(cookie, "owner_session");
     console.log('owner_session Cookie:', ownerSessionCookie);
     const ownerSessionValue = ownerSessionCookie
       ? ownerSessionCookie.split(';')[0].split('=')[1]
@@ -56,18 +61,21 @@ const create = async() => {
         method: "POST",
         "credentials": 'include',
       })
+      let json;
       /**
        * @type {{id: string, owner_id: string}}
        */
-      const json = await chairFetch.json()
+      try {
+       json = await chairFetch.json()
+      }catch(e) {
+        console.error(e)
+      }
 
       // set-cookie ヘッダーを取得
       console.log('headers', chairFetch.headers)
-      const cookies =  chairFetch.headers.raw()['set-cookie'];
-      console.log('All Cookies:', cookies);
-
-      // owner_session クッキーを探す
-      const chairSessionCookie = cookies.find(cookie => cookie.startsWith('chair_session='));
+      const cookie =  chairFetch.headers.get('set-cookie');
+      console.log('All Cookies:', cookie);
+      const chairSessionCookie =  getCookieValue(cookie, "chair_session");
       console.log('chair_session Cookie:', chairSessionCookie);
       const chairSessionValue = chairSessionCookie
         ? chairSessionCookie.split(';')[0].split('=')[1]
