@@ -29,7 +29,7 @@ const create = async() => {
 
   const BASE_URL = "http://localhost:8080";
 
-  return candidates.map(async (candidate) => {
+  const candidate = await Promise.all(candidates.map(async (candidate) => {
     const ownerFetch = await fetch(`${BASE_URL}/api/owner/owners`, {
       "body": JSON.stringify({
         name: candidate.name
@@ -44,19 +44,18 @@ const create = async() => {
 
     const chairRegisterToken = json.chair_register_token;
 
-    console.log('check: ownerFetch', ownerFetch.headers.get("set-cookie"),  ownerFetch.headers.keys())
+    console.log('chairRegisterToken: ', chairRegisterToken)
     // set-cookie ヘッダーを取得
     const cookie = ownerFetch.headers.get('set-cookie');
 
     // owner_session クッキーを探す
     const ownerSessionCookie = getCookieValue(cookie, "owner_session");
-    console.log('owner_session Cookie:', ownerSessionCookie);
     const ownerSessionValue = ownerSessionCookie
       ? ownerSessionCookie.split(';')[0].split('=')[1]
       : null;
     
-    const chairs = candidate.chairs.map( async (chair) => {
-      const chairFetch = await fetch(`${BASE_URL}/api/owner/chairs`, {
+    const chairs = await Promise.all(candidate.chairs.map( async (chair) => {
+      const chairFetch = await fetch(`${BASE_URL}/api/chair/chairs`, {
         body: JSON.stringify({name: chair.name, model: chair.model, chair_register_token: chairRegisterToken}),
         method: "POST",
         "credentials": 'include',
@@ -71,12 +70,8 @@ const create = async() => {
         console.error(e)
       }
 
-      // set-cookie ヘッダーを取得
-      console.log('headers', chairFetch.headers)
       const cookie =  chairFetch.headers.get('set-cookie');
-      console.log('All Cookies:', cookie);
       const chairSessionCookie =  getCookieValue(cookie, "chair_session");
-      console.log('chair_session Cookie:', chairSessionCookie);
       const chairSessionValue = chairSessionCookie
         ? chairSessionCookie.split(';')[0].split('=')[1]
         : null;
@@ -86,7 +81,7 @@ const create = async() => {
         model: chair.model,
         token: chairSessionValue
       }
-    })
+    }))
 
     return {
       id: json.id,
@@ -94,16 +89,8 @@ const create = async() => {
       token: ownerSessionValue,
       chairs
     }
-  })
-
+  }))
+  writeFileSync("./app/initial-data/data.json", JSON.stringify(candidate, null, 2))
 }
 
-
-const main = async() => {
-  const data = await create()
-  console.log('data', data)
-  writeFileSync("./app/initial-data/data.json", JSON.stringify(data, null, 2))
-}
-
-
-main()
+create()

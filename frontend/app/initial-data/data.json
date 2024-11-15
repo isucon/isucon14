@@ -1,5 +1,39 @@
 [
-  {},
-  {},
-  {}
+  {
+    "id": "01JCQKMY7XCS2DZ3RQF8518C0A",
+    "name": "オーナー1",
+    "chairs": [
+      {
+        "id": "01JCQKMY9NZNS6126XG7T83KPA",
+        "name": "chair1",
+        "model": "model1"
+      },
+      {
+        "id": "01JCQKMY9QSD6WKDH4HPHKFPJT",
+        "name": "chair2",
+        "model": "model2"
+      },
+      {
+        "id": "01JCQKMY9V5STX9ECJV3ZXRDA9",
+        "name": "chair3",
+        "model": "model3"
+      }
+    ]
+  },
+  {
+    "id": "01JCQKMY7XCS2DZ3RQF8DFP1BX",
+    "name": "オーナー2",
+    "chairs": [
+      {
+        "id": "01JCQKMY9V5STX9ECJV3MBJFR4",
+        "name": "chair1",
+        "model": "model1"
+      }
+    ]
+  },
+  {
+    "id": "01JCQKMY7XCS2DZ3RQF7RV9GZD",
+    "name": "オーナー3",
+    "chairs": []
+  }
 ]
