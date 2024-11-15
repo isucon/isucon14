@@ -44,15 +44,11 @@ const create = async() => {
 
     const chairRegisterToken = json.chair_register_token;
 
-    console.log('chairRegisterToken: ', chairRegisterToken)
     // set-cookie ヘッダーを取得
     const cookie = ownerFetch.headers.get('set-cookie');
 
     // owner_session クッキーを探す
-    const ownerSessionCookie = getCookieValue(cookie, "owner_session");
-    const ownerSessionValue = ownerSessionCookie
-      ? ownerSessionCookie.split(';')[0].split('=')[1]
-      : null;
+    const ownerSessionValue = getCookieValue(cookie, "owner_session");
     
     const chairs = await Promise.all(candidate.chairs.map( async (chair) => {
       const chairFetch = await fetch(`${BASE_URL}/api/chair/chairs`, {
@@ -71,10 +67,7 @@ const create = async() => {
       }
 
       const cookie =  chairFetch.headers.get('set-cookie');
-      const chairSessionCookie =  getCookieValue(cookie, "chair_session");
-      const chairSessionValue = chairSessionCookie
-        ? chairSessionCookie.split(';')[0].split('=')[1]
-        : null;
+      const chairSessionValue = getCookieValue(cookie, "chair_session");
       return {
         id: json.id,
         name: chair.name,
@@ -90,7 +83,8 @@ const create = async() => {
       chairs
     }
   }))
-  writeFileSync("./app/initial-data/data.json", JSON.stringify(candidate, null, 2))
+  writeFileSync("./app/initial-data/data.json", JSON.stringify({owners: candidate}, null, 2))
+  console.log('created')
 }
 
 create()
