@@ -6,7 +6,7 @@ use HTTP::Status qw(:constants);
 use Types::Standard -types;
 use Data::ULID::XS qw(ulid);
 
-use Isuride::Util qw(secure_random_str check_params);
+use Isuride::Util qw(secure_random_str calculate_sale check_params);
 
 use constant AppPostUsersRequest => Dict [
     username        => Str,
@@ -115,5 +115,79 @@ sub app_post_payment_methods ($app, $c) {
         $user->{id}, $params->{token}
     );
 
-    $c->halt_no_content(HTTP_OK);
+    $c->halt_no_content(HTTP_NO_CONTENT);
+}
+
+sub app_get_rides ($app, $c) {
+    my $user = $c->stash->{user};
+
+    my $rides = $app->dbh->select_all(
+        q{SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC},
+        $user->{id}
+    );
+
+    my $items = [];
+
+    for my $ride ($rides->@*) {
+        my $status = get_latest_ride_status($c, $ride->{id});
+
+        unless ($status) {
+            return $c->halt_json(HTTP_INTERNAL_SERVER_ERROR, 'sql: no rows in result set');
+        }
+
+        if ($status ne 'COMPLETED') {
+            next;
+        }
+
+        my $item = {
+            id                => $ride->{id},
+            pickup_coordinate => {
+                latitude  => $ride->{pickup_latitude},
+                longitude => $ride->{pickup_longitude},
+            },
+            destination_coordinate => {
+                latitude  => $ride->{destination_latitude},
+                longitude => $ride->{destination_longitude},
+            },
+            fare       => calculate_sale($ride),
+            evaluation => $ride->{evaluation},
+            # XXX: unixMilli相当の処理
+            requested_at => $ride->{created_at},
+            completed_at => $ride->{updated_at},
+        };
+
+        my $chair = $app->dbh->select_row(
+            q{SELECT * FROM chairs WHERE id = ?},
+            $ride->{chair_id}
+        );
+
+        unless ($chair) {
+            return $c->halt_json(HTTP_INTERNAL_SERVER_ERROR, 'sql: no rows in result set');
+        }
+
+        $item->{chair}->{id}    = $chair->{id};
+        $item->{chair}->{name}  = $chair->{name};
+        $item->{chair}->{model} = $chair->{model};
+
+        my $owener = $app->dbh->select_row(
+            q{SELECT * FROM owners WHERE id = ?},
+            $chair->{owner_id}
+        );
+
+        unless ($owener) {
+            return $c->halt_json(HTTP_INTERNAL_SERVER_ERROR, 'sql: no rows in result set');
+        }
+
+        $item->{chair}->{owner} = $owener->{name};
+
+        push $items->@*, $item;
+    }
+    return $c->render_json({ rides => $items });
+}
+
+sub get_latest_ride_status($c, $ride_id) {
+    $c->dbh->select_row(
+        q{SELECT status FROM ride_statuses WHERE ride_id = ? ORDER BY created_at DESC LIMIT 1},
+        $ride_id
+    );
 }
