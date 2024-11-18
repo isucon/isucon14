@@ -16,9 +16,11 @@ const DEFAULT_URL = `http://${DEFAULT_HOSTNAME}:${DEFAULT_PORT}`;
 
 type APIResponse = Record<string, string>;
 
-const intialOwnerData = existsSync("./initial-owner-data.json") ? JSON.parse(
-  readFileSync('./client.login-cache.json').toString(),
-) as unknown: undefined;
+const intialOwnerData = existsSync("./initial-owner-data.json")
+  ? (JSON.parse(
+      readFileSync("./client.login-cache.json").toString(),
+    ) as unknown)
+  : undefined;
 
 const getLoggedInURLForClient = async () => {
   const generateURL = (r: APIResponse) => {
