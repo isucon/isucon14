@@ -1,5 +1,3 @@
-import initialData from "./data.json" with { type: "json" };
-
 type ChairJsonType = { id: string; name: string; model: string; token: string };
 type OwnerJsonType = {
   id: string;
@@ -9,10 +7,11 @@ type OwnerJsonType = {
 };
 type JsonType = { owners: OwnerJsonType[] };
 
-const jsonData = initialData satisfies JsonType;
+
+const initialOwnerData = __INITIAL_OWNER_DATA__ || { owners: []} satisfies JsonType;
 
 export const getOWners = () => {
-  return jsonData.owners.map((owner) => ({
+  return initialOwnerData.owners.map((owner) => ({
     id: owner.id,
     name: owner.name,
     token: owner.token,
@@ -20,5 +19,5 @@ export const getOWners = () => {
 };
 
 export const getChairs = (ownerId: OwnerJsonType["id"]) => {
-  return jsonData.owners.find((owner) => owner.id === ownerId)?.chairs ?? [];
+  return initialOwnerData.owners.find((owner) => owner.id === ownerId)?.chairs ?? [];
 };

@@ -8,4 +8,4 @@ node_modules
 *.login-cache.json
 
 # 初期データが利用できるようになったら、外して運用
-app/inital-data/data.json 
+initial-owner-data.json

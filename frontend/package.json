@@ -13,7 +13,7 @@
     "fmtcheck": "prettier ./*.{cjs,ts,js} ./app --check",
     "fmt": "prettier ./*.{cjs,ts,js} ./app --write",
     "codegen": "rm -rf ./app/apiClient && npx openapi-codegen gen isucon",
-    "create-initial-data": "node  ./create-initial-data.mjs"
+    "create-initial-data": "node  ./create-initial-owner-data.mjs"
   },
   "dependencies": {
     "@remix-run/node": "^2.11.1",

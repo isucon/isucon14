@@ -83,7 +83,7 @@ const create = async() => {
       chairs
     }
   }))
-  writeFileSync("./app/initial-data/data.json", JSON.stringify({owners: candidate}, null, 2))
+  writeFileSync("./initial-owner-data.json", JSON.stringify({owners: candidate}, null, 2))
   console.log('created')
 }
 
