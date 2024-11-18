@@ -10,4 +10,4 @@ declare const __INITIAL_OWNER_DATA__: {
     token: string;
     chairs: { id: string; name: string; model: string; token: string }[];
   }[];
-};
+} | undefined;
