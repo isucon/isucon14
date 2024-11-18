@@ -1,11 +1,11 @@
-export const fetchWithCustomCookie = async <T extends () => Promise<any>>(
-  fetcher: T,
+export const fetchWithCustomCookie = async <T>(
+  fetcher: () => Promise<T>,
   cookieInfo: {
     key: string;
     value: string;
     path: string;
   },
-): Promise<ReturnType<T>> => {
+): Promise<T> => {
   const { key, value, path } = cookieInfo;
   document.cookie = `${key}=${value}; path=${path}`;
   return fetcher();
