@@ -10,12 +10,8 @@ type JsonType = { owners: OwnerJsonType[] };
 
 const initialOwnerData = __INITIAL_OWNER_DATA__ || { owners: []} satisfies JsonType;
 
-export const getOWners = () => {
-  return initialOwnerData.owners.map((owner) => ({
-    id: owner.id,
-    name: owner.name,
-    token: owner.token,
-  }));
+export const getOwners = () => {
+  return initialOwnerData.owners;
 };
 
 export const getChairs = (ownerId: OwnerJsonType["id"]) => {
