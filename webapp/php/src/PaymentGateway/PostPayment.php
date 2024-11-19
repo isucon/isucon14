@@ -5,18 +5,15 @@ declare(strict_types=1);
 namespace IsuRide\PaymentGateway;
 
 use Closure;
+use Fig\Http\Message\StatusCodeInterface;
 use IsuRide\Result\Ride;
 use RuntimeException;
 use Throwable;
 
 readonly class PostPayment
 {
-    public function __construct(
-        private string $paymentURL = "http://localhost:12345"
-    ) {
-    }
-
     /**
+     * @param string $paymentGatewayURL
      * @param string $token
      * @param PostPaymentRequest $param
      * @param Closure(): Ride $retrieveRideRequestsOrderByCreatedAtAsc
@@ -24,6 +21,7 @@ readonly class PostPayment
      * @throws Throwable
      */
     public function execute(
+        string $paymentGatewayURL,
         string $token,
         PostPaymentRequest $param,
         Closure $retrieveRideRequestsOrderByCreatedAtAsc
@@ -38,7 +36,7 @@ readonly class PostPayment
         while (true) {
             try {
                 // POSTリクエストを作成
-                $url = $this->paymentUrl();
+                $url = $paymentGatewayURL . "/payments";
                 $headers = [
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . $token,
@@ -60,14 +58,13 @@ readonly class PostPayment
                 }
                 curl_close($ch);
 
-                if ($http_code !== 204) {
+                if ($http_code !== StatusCodeInterface::STATUS_NO_CONTENT) {
                     // エラーが返ってきても成功している場合があるので、社内決済マイクロサービスに問い合わせ
-                    $url = $this->paymentUrl();
                     $headers = [
                         'Authorization: Bearer ' . $token,
                     ];
 
-                    $ch = curl_init($url);
+                    $ch = curl_init($paymentGatewayURL . "/payments");
                     curl_setopt($ch, CURLOPT_HTTPGET, true);
                     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -131,13 +128,5 @@ readonly class PostPayment
                 }
             }
         }
-    }
-
-    /**
-     * @return string
-     */
-    public function paymentUrl(): string
-    {
-        return $this->paymentURL . "/payments";
     }
 }

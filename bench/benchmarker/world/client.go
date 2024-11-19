@@ -130,14 +130,16 @@ type SendEvaluationResponse struct {
 }
 
 type RegisterUserRequest struct {
-	UserName    string
-	FirstName   string
-	LastName    string
-	DateOfBirth string
+	UserName       string
+	FirstName      string
+	LastName       string
+	DateOfBirth    string
+	InvitationCode string
 }
 
 type RegisterUserResponse struct {
-	ServerUserID string
+	ServerUserID   string
+	InvitationCode string
 
 	Client UserClient
 }

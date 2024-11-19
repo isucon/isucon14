@@ -8,6 +8,7 @@ use Fig\Http\Message\StatusCodeInterface;
 use IsuRide\Database\Model\Chair;
 use IsuRide\Database\Model\Owner;
 use IsuRide\Database\Model\Ride;
+use IsuRide\Database\Model\User;
 use IsuRide\Handlers\AbstractHttpHandler;
 use IsuRide\Model\AppGetRides200Response;
 use IsuRide\Model\AppGetRides200ResponseRidesInner;
@@ -39,26 +40,12 @@ class GetRides extends AbstractHttpHandler
         array $args
     ): ResponseInterface {
         $user = $request->getAttribute('user');
-        $rides = [];
+        assert($user instanceof User);
         try {
             $stmt = $this->db->prepare('SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC');
             $stmt->bindValue(1, $user->id, PDO::PARAM_STR);
             $stmt->execute();
-            $rideResult = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($rideResult as $row) {
-                $rides[] = new Ride(
-                    id: $row['id'],
-                    userId: $row['user_id'],
-                    chairId: $row['chair_id'],
-                    pickupLatitude: $row['pickup_latitude'],
-                    pickupLongitude: $row['pickup_longitude'],
-                    destinationLatitude: $row['destination_latitude'],
-                    destinationLongitude: $row['destination_longitude'],
-                    evaluation: $row['evaluation'],
-                    createdAt: $row['created_at'],
-                    updatedAt: $row['updated_at']
-                );
-            }
+            $rides = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
             return (new ErrorResponse())->write(
                 $response,
@@ -67,7 +54,19 @@ class GetRides extends AbstractHttpHandler
             );
         }
         $items = [];
-        foreach ($rides as $ride) {
+        foreach ($rides as $row) {
+            $ride = new Ride(
+                id: $row['id'],
+                userId: $row['user_id'],
+                chairId: $row['chair_id'],
+                pickupLatitude: $row['pickup_latitude'],
+                pickupLongitude: $row['pickup_longitude'],
+                destinationLatitude: $row['destination_latitude'],
+                destinationLongitude: $row['destination_longitude'],
+                evaluation: $row['evaluation'],
+                createdAt: $row['created_at'],
+                updatedAt: $row['updated_at']
+            );
             try {
                 $status = $this->getLatestRideStatus($this->db, $ride->id);
             } catch (PDOException $e) {

@@ -6,7 +6,7 @@ namespace IsuRide\Result;
 
 use Throwable;
 
-class Ride
+readonly class Ride
 {
     /**
      * @param \IsuRide\Database\Model\Ride[] $rides

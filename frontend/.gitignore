@@ -6,3 +6,6 @@ node_modules
 .env
 
 *.login-cache.json
+
+# 初期データが利用できるようになったら、外して運用
+initial-owner-data.json

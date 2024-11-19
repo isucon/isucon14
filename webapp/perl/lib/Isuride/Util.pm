@@ -5,12 +5,20 @@ use utf8;
 use Exporter 'import';
 
 our @EXPORT_OK = qw(
+    secure_random_str
+
     check_params
 );
 
 use Hash::Util qw(lock_hashref);
+use Crypt::URandom ();
 
 use Isuride::Assert qw(ASSERT);
+
+sub secure_random_str ($byte_length) {
+    my $bytes = Crypt::URandom::urandom($byte_length);
+    return unpack('H*', $bytes);
+}
 
 {
     my $compiled_checks = {};

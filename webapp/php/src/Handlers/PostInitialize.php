@@ -8,6 +8,8 @@ use Fig\Http\Message\StatusCodeInterface;
 use IsuRide\Model\PostInitialize200Response;
 use IsuRide\Model\PostInitializeRequest;
 use IsuRide\Response\ErrorResponse;
+use PDO;
+use PDOException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use RuntimeException;
@@ -16,7 +18,7 @@ use Slim\Exception\HttpInternalServerErrorException;
 class PostInitialize extends AbstractHttpHandler
 {
     public function __construct(
-        private readonly string $resourcePath,
+        private readonly PDO $db,
     ) {
     }
 
@@ -54,7 +56,21 @@ class PostInitialize extends AbstractHttpHandler
                 )
             );
         }
-        file_put_contents($this->resourcePath, (string)$req);
+        try {
+            $stmt = $this->db->prepare('UPDATE settings SET value = ? WHERE name = \'payment_gateway_url\'');
+            $stmt->bindValue(1, $req->getPaymentServer(), PDO::PARAM_STR);
+            $stmt->execute();
+        } catch (PDOException $e) {
+            return (new ErrorResponse())->write(
+                $response,
+                StatusCodeInterface::STATUS_INTERNAL_SERVER_ERROR,
+                new HttpInternalServerErrorException(
+                    request: $request,
+                    message: 'Failed to update payment_gateway_url',
+                    previous: $e
+                )
+            );
+        }
         return $this->writeJson($response, new PostInitialize200Response([
             'language' => 'php',
         ]));

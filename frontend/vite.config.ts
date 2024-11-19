@@ -1,5 +1,5 @@
 import { vitePlugin as remix } from "@remix-run/dev";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { defineConfig, type Plugin, type UserConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import {
@@ -15,6 +15,12 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_URL = `http://${DEFAULT_HOSTNAME}:${DEFAULT_PORT}`;
 
 type APIResponse = Record<string, string>;
+
+const intialOwnerData = existsSync("./initial-owner-data.json")
+  ? (JSON.parse(
+      readFileSync("./client.login-cache.json").toString(),
+    ) as unknown)
+  : undefined;
 
 const getLoggedInURLForClient = async () => {
   const generateURL = (r: APIResponse) => {
@@ -122,6 +128,7 @@ export const config = {
   ],
   define: {
     [alternativeURLExpression]: `"${process.env["API_BASE_URL"] ?? "."}"`,
+    __INITIAL_OWNER_DATA__: intialOwnerData,
   },
   server: {
     proxy: {

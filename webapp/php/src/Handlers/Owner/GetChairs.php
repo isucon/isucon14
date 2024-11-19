@@ -35,8 +35,8 @@ class GetChairs extends AbstractHttpHandler
         ResponseInterface $response,
         array $args
     ): ResponseInterface {
-        /** @var Owner $owner */
         $owner = $request->getAttribute('owner');
+        assert($owner instanceof Owner);
         /** @var ChairWithDetail[] $chairs */
         $chairs = [];
         try {
@@ -71,21 +71,7 @@ SQL
             );
             $stmt->bindValue(1, $owner->id, PDO::PARAM_STR);
             $stmt->execute();
-            $chairResult = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($chairResult as $row) {
-                $chairs[] = new ChairWithDetail(
-                    id: $row['id'],
-                    ownerId: $row['owner_id'],
-                    name: $row['name'],
-                    accessToken: $row['access_token'],
-                    model: $row['model'],
-                    isActive: (bool)$row['is_active'],
-                    createdAt: $row['created_at'],
-                    updatedAt: $row['updated_at'],
-                    totalDistance: (int)$row['total_distance'],
-                    totalDistanceUpdatedAt: $row['total_distance_updated_at']
-                );
-            }
+            $chairs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
             return (new ErrorResponse())->write(
                 $response,
@@ -96,15 +82,27 @@ SQL
         $res = new OwnerGetChairs200Response();
         $ownerChairs = [];
         foreach ($chairs as $row) {
+            $chair = new ChairWithDetail(
+                id: $row['id'],
+                ownerId: $row['owner_id'],
+                name: $row['name'],
+                accessToken: $row['access_token'],
+                model: $row['model'],
+                isActive: (bool)$row['is_active'],
+                createdAt: $row['created_at'],
+                updatedAt: $row['updated_at'],
+                totalDistance: (int)$row['total_distance'],
+                totalDistanceUpdatedAt: $row['total_distance_updated_at']
+            );
             $ownerChair = new OwnerGetChairs200ResponseChairsInner();
-            $ownerChair->setId($row->id)
-                ->setName($row->name)
-                ->setModel($row->model)
-                ->setActive($row->isActive)
-                ->setRegisteredAt($row->createdAtUnixMilliseconds())
-                ->setTotalDistance($row->totalDistance);
-            if ($row->isTotalDistanceUpdatedAt()) {
-                $ownerChair->setTotalDistanceUpdatedAt($row->totalDistanceUpdatedAtUnixMilliseconds());
+            $ownerChair->setId($chair->id)
+                ->setName($chair->name)
+                ->setModel($chair->model)
+                ->setActive($chair->isActive)
+                ->setRegisteredAt($chair->createdAtUnixMilliseconds())
+                ->setTotalDistance($chair->totalDistance);
+            if ($chair->isTotalDistanceUpdatedAt()) {
+                $ownerChair->setTotalDistanceUpdatedAt($chair->totalDistanceUpdatedAtUnixMilliseconds());
             }
             $ownerChairs[] = $ownerChair;
         }

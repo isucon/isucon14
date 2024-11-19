@@ -132,7 +132,11 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	paymentURL = req.PaymentServer
+	if _, err := db.Exec("UPDATE settings SET value = ? WHERE name = 'payment_gateway_url'", req.PaymentServer); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
 }
 

@@ -38,7 +38,7 @@ func (c *Client) AppPostRegister(ctx context.Context, reqBody *api.AppPostUsersR
 	defer closeBody(resp)
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("POST /api/app/usersへのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:%d, actual:%d)", http.StatusOK, resp.StatusCode)
+		return nil, fmt.Errorf("POST /api/app/usersへのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:%d, actual:%d)", http.StatusCreated, resp.StatusCode)
 	}
 
 	resBody := &api.AppPostUsersCreated{}

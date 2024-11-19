@@ -49,17 +49,19 @@ func (c *WorldClient) RegisterUser(ctx *world.Context, data *world.RegisterUserR
 	}
 
 	response, err := client.AppPostRegister(c.ctx, &api.AppPostUsersReq{
-		Username:    data.UserName,
-		Firstname:   data.FirstName,
-		Lastname:    data.LastName,
-		DateOfBirth: data.DateOfBirth,
+		Username:       data.UserName,
+		Firstname:      data.FirstName,
+		Lastname:       data.LastName,
+		DateOfBirth:    data.DateOfBirth,
+		InvitationCode: api.OptString{Set: len(data.InvitationCode) > 0, Value: data.InvitationCode},
 	})
 	if err != nil {
 		return nil, WrapCodeError(ErrorCodeFailedToRegisterUser, err)
 	}
 
 	return &world.RegisterUserResponse{
-		ServerUserID: response.ID,
+		ServerUserID:   response.ID,
+		InvitationCode: response.InvitationCode,
 		Client: &userClient{
 			ctx:    c.ctx,
 			client: client,

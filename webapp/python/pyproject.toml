@@ -1,0 +1,37 @@
+[project]
+name = "isuride"
+version = "0.1.0"
+description = "isuride"
+readme = "README.md"
+authors = [
+    { name = "Yiyang Zhan", email = "pon.zhan@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "cryptography>=43.0.3",
+    "fastapi[standard]>=0.115.5",
+    "pymysql>=1.1.1",
+    "python-ulid>=3.0.0",
+    "sqlalchemy>=2.0.36",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "gunicorn>=23.0.0",
+    "nox>=2024.10.9",
+]
+
+# インデックスを明示的に指定しておく
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+
+[tool.ruff.lint]
+extend-select = [
+    "UP", # pyupgrade
+    "I", # isort
+]

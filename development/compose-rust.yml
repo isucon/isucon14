@@ -1,0 +1,33 @@
+services:
+  webapp:
+    build:
+      context: ../webapp/rust
+    ports:
+      - 8080:8080
+    volumes:
+      - ../webapp/sql:/home/isucon/webapp/sql
+    working_dir: /home/isucon/webapp/rust
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ISUCON_DB_HOST: db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: curl -f http://localhost:8080; if [ $? -ne 22 ]; then exit 1; fi
+      start_period: 60s
+  db:
+    image: mysql:8
+    environment:
+      ENV: local-dev
+      MYSQL_ROOT_PASSWORD: isucon
+      MYSQL_DATABASE: isuride
+    ports:
+      - 3306:3306
+    volumes:
+      - ./mysql/db:/var/lib/mysql
+      - ../webapp/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: mysqladmin ping -h 127.0.0.1 -uisucon -pisucon
+      start_period: 60s

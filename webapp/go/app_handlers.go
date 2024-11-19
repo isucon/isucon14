@@ -102,7 +102,7 @@ func appPostUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		// 招待した人にもRewardを付与
 		_, err = tx.Exec(
-			"INSERT INTO coupons (user_id, code, discount) VALUES (?, ?, ?)",
+			"INSERT INTO coupons (user_id, code, discount) VALUES (?, CONCAT(?, '_', FLOOR(UNIX_TIMESTAMP(NOW(3))*1000)), ?)",
 			inviter.ID, "RWD_"+*req.InvitationCode, 1000,
 		)
 		if err != nil {
@@ -756,7 +756,14 @@ func appPostRideEvaluatation(w http.ResponseWriter, r *http.Request) {
 	paymentGatewayRequest := &paymentGatewayPostPaymentRequest{
 		Amount: fare,
 	}
-	if err := requestPaymentGatewayPostPayment(paymentToken.Token, paymentGatewayRequest, func() ([]Ride, error) {
+
+	var paymentGatewayURL string
+	if err := tx.Get(&paymentGatewayURL, "SELECT value FROM settings WHERE name = 'payment_gateway_url'"); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if err := requestPaymentGatewayPostPayment(paymentGatewayURL, paymentToken.Token, paymentGatewayRequest, func() ([]Ride, error) {
 		rides := []Ride{}
 		if err := tx.Select(&rides, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at ASC`, ride.UserID); err != nil {
 			return nil, err
@@ -1014,14 +1021,15 @@ func appGetNearbyChairs(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
-		}
-		status, err := getLatestRideStatus(tx, ride.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if status != "COMPLETED" {
-			continue
+		} else {
+			status, err := getLatestRideStatus(tx, ride.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			if status != "COMPLETED" {
+				continue
+			}
 		}
 
 		// 5分以内に更新されている最新の位置情報を取得
