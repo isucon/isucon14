@@ -2,4 +2,4 @@ version: "3"
 
 tasks:
   run:
-    - carton exec plackup -s Starlet -p 8080 -Ilib app.psgi
+    - carton exec plackup -s Starlet -p 8080 -Ilib -r app.psgi

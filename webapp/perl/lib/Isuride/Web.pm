@@ -55,6 +55,7 @@ filter ChairAuthMiddleware() => \&Isuride::Middleware::chair_auth_middleware;
         post '/api/app/users' => \&Isuride::Handler::App::app_post_users;
 
         post '/api/app/payment-methods' => [AppAuthMiddleware] => \&Isuride::Handler::App::app_post_payment_methods;
+        get '/api/app/rides'             => [AppAuthMiddleware] => \&Isuride::Handler::App::app_get_rides;
         get '/app/requests/{request_id}' => [AppAuthMiddleware] => \&app_get_resuest;
     }
 }
