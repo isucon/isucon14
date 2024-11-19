@@ -9,7 +9,7 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export default function DriverRegister() {
+export default function ProviderRegister() {
   return (
     <>
       <OwnerLoginForm />

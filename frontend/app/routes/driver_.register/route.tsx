@@ -40,15 +40,10 @@ export default function DriverRegister() {
             label="chair_register_token:"
             required
           />
-          <TextInput
-            id="chair_name"
-            name="chair_name"
-            label="Chair name:"
-            required
-          />
+          <TextInput id="chair_name" name="name" label="Chair name:" required />
           <TextInput
             id="chair_model"
-            name="chair_model"
+            name="model"
             label="Chair model:"
             required
           />

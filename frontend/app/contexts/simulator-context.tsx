@@ -1,67 +1,55 @@
-import { ReactNode, createContext } from "react";
+import { ReactNode, createContext, useContext } from "react";
 import type { Coordinate } from "~/apiClient/apiSchemas";
+import { getOwners } from "~/initialDataClient/getter";
 
-type SimulatorChair = {
+export type SimulatorChair = {
+  id: string;
   name: string;
   model: string;
-  chair_token: string;
-  coordinate: Coordinate;
+  token: string;
+  coordinateState: {
+    coordinate?: Coordinate;
+    setter: (coordinate: Coordinate) => void;
+  };
 };
 
-type ClientProviderContextType = {
+export type SimulatorOwner = {
+  id: string;
+  name: string;
+  token: string;
   chairs: SimulatorChair[];
 };
 
-const ClientProviderContext = createContext<Partial<ClientProviderContextType>>(
-  {},
-);
+type ClientSimulatorContextType = { owners: SimulatorOwner[] };
 
-export const SimulatorProvider = ({
-  children,
-}: {
-  children: ReactNode;
-  providerId: string;
-}) => {
+const ClientSimulatorContext = createContext<ClientSimulatorContextType>({
+  owners: [],
+});
+
+export const SimulatorProvider = ({ children }: { children: ReactNode }) => {
+  const owners = getOwners().map(
+    (owner) =>
+      ({
+        ...owner,
+        chairs: owner.chairs.map(
+          (chair) =>
+            ({
+              ...chair,
+              coordinateState: {
+                setter(coordinate) {
+                  this.coordinate = coordinate;
+                },
+              },
+            }) satisfies SimulatorChair,
+        ),
+      }) satisfies SimulatorOwner,
+  );
+
   return (
-    <ClientProviderContext.Provider value={{}}>
+    <ClientSimulatorContext.Provider value={{ owners }}>
       {children}
-    </ClientProviderContext.Provider>
+    </ClientSimulatorContext.Provider>
   );
 };
 
-export const useSimulatorContext = () => {
-  // TODO: 動的に作成できるようにする
-  const testSimulatorContext = {
-    chairs: [
-      {
-        chair_token: "token1",
-        coordinate: {
-          latitude: 100,
-          longitude: 100,
-        },
-        model: "testModel1",
-        name: "testName1",
-      },
-      {
-        chair_token: "token2",
-        coordinate: {
-          latitude: 200,
-          longitude: 200,
-        },
-        model: "testModel2",
-        name: "testName2",
-      },
-      {
-        chair_token: "token3",
-        coordinate: {
-          latitude: 300,
-          longitude: 300,
-        },
-        model: "testModel3",
-        name: "testName3",
-      },
-    ],
-  } satisfies ClientProviderContextType;
-
-  return testSimulatorContext;
-};
+export const useSimulatorContext = () => useContext(ClientSimulatorContext);

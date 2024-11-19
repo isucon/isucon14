@@ -1,27 +1,35 @@
-import type { MetaFunction } from "@remix-run/node";
-import { useSimulatorContext } from "~/contexts/simulator-context";
+import { useState } from "react";
 
-export const meta: MetaFunction = () => {
-  return [
-    { title: "Simulator | ISURIDE" },
-    { name: "description", content: "シュミレーター" },
-  ];
-};
+import { PulldownSelector } from "~/components/primitives/menu/pulldown";
+import {
+  SimulatorChair,
+  useSimulatorContext,
+} from "~/contexts/simulator-context";
+import { ChairInfo } from "./ChairInfo";
 
 export default function Index() {
-  const simulator = useSimulatorContext();
+  const { owners } = useSimulatorContext();
+  const ownerNames = [...owners].map((o) => ({ id: o.id, name: o.name }));
+  const getOwnerById = (id: string) => {
+    return owners.find((o) => o.id === id);
+  };
+
+  const [targetOwner, setTargetOwner] = useState<{ chairs: SimulatorChair[] }>(
+    owners[0],
+  );
+
   return (
-    <ul>
-      {simulator.chairs.map((c, i) => {
-        return (
-          <li key={i}>
-            name: {c.name}
-            model: {c.model}
-            lat: {c.coordinate.latitude}
-            lon: {c.coordinate.longitude}
-          </li>
-        );
-      })}
-    </ul>
+    <div className="p-6">
+      <PulldownSelector
+        className="mb-3"
+        id="ownerNames"
+        label="オーナー"
+        items={ownerNames}
+        onChange={(id) => setTargetOwner(getOwnerById(id) ?? { chairs: [] })}
+      />
+      {targetOwner !== undefined
+        ? targetOwner.chairs?.map((c) => <ChairInfo key={c.id} chair={c} />)
+        : null}
+    </div>
   );
 }

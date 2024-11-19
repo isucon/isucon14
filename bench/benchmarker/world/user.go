@@ -1,10 +1,12 @@
 package world
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"slices"
+	"sync"
 
 	"github.com/isucon/isucon14/bench/internal/concurrent"
 )
@@ -44,6 +46,14 @@ type User struct {
 	Client UserClient
 	// Rand 専用の乱数
 	Rand *rand.Rand
+	// Invited 招待されたユーザーか
+	Invited bool
+	// InvitingLock 招待ロック
+	InvitingLock sync.Mutex
+	// InvCodeUsedCount 招待コードの使用回数
+	InvCodeUsedCount int
+	// UnusedInvCoupons 未使用の招待クーポンの数
+	UnusedInvCoupons int
 	// tickDone 行動が完了しているかどうか
 	tickDone tickDone
 	// notificationConn 通知ストリームコネクション
@@ -53,10 +63,11 @@ type User struct {
 }
 
 type RegisteredUserData struct {
-	UserName    string
-	FirstName   string
-	LastName    string
-	DateOfBirth string
+	UserName       string
+	FirstName      string
+	LastName       string
+	DateOfBirth    string
+	InvitationCode string
 }
 
 func (u *User) String() string {
@@ -68,6 +79,10 @@ func (u *User) String() string {
 
 func (u *User) SetID(id UserID) {
 	u.ID = id
+}
+
+func (u *User) GetServerID() string {
+	return u.ServerID
 }
 
 func (u *User) Tick(ctx *Context) error {
@@ -221,6 +236,9 @@ func (u *User) CreateRequest(ctx *Context) error {
 		panic("ユーザーに進行中のリクエストがあるのにも関わらず、リクエストを新規作成しようとしている")
 	}
 
+	u.InvitingLock.Lock()
+	defer u.InvitingLock.Unlock()
+
 	// TODO 目的地の決定方法をランダムじゃなくする
 	pickup := RandomCoordinateOnRegionWithRand(u.Region, u.Rand)
 	dest := RandomCoordinateAwayFromHereWithRand(pickup, u.Rand.IntN(100)+5, u.Rand)
@@ -237,9 +255,40 @@ func (u *User) CreateRequest(ctx *Context) error {
 		},
 	}
 
+	useInvCoupon := false
+	switch {
 	// 初回利用の割引を適用
-	if len(u.RequestHistory) == 0 {
+	case len(u.RequestHistory) == 0:
 		req.Discount = 3000
+
+	// 招待された側のクーポンを適用
+	case len(u.RequestHistory) == 1 && u.Invited:
+		req.Discount = 1500
+
+	// 招待した側のクーポンを適用
+	case u.UnusedInvCoupons > 0:
+		req.Discount = 1000
+		useInvCoupon = true
+	}
+
+	nearby, err := u.Client.GetNearbyChairs(ctx, pickup, 50)
+	if err != nil {
+		return WrapCodeError(ErrorCodeFailedToCreateRequest, err)
+	}
+	if err := u.World.checkNearbyChairsResponse(pickup, 50, nearby); err != nil {
+		return WrapCodeError(ErrorCodeFailedToCreateRequest, err)
+	}
+	if len(nearby.Chairs) == 0 {
+		// 近くに椅子が無いので配車をやめる
+		return nil
+	}
+
+	estimation, err := u.Client.GetEstimatedFare(ctx, pickup, dest)
+	if err != nil {
+		return WrapCodeError(ErrorCodeFailedToCreateRequest, err)
+	}
+	if req.ActualDiscount() != estimation.Discount || req.Fare() != estimation.Fare {
+		return WrapCodeError(ErrorCodeFailedToCreateRequest, errors.New("ライド料金の見積もり金額が誤っています"))
 	}
 
 	res, err := u.Client.SendCreateRequest(ctx, req)
@@ -250,6 +299,9 @@ func (u *User) CreateRequest(ctx *Context) error {
 	u.Request = req
 	u.RequestHistory = append(u.RequestHistory, req)
 	u.World.RequestDB.Create(req)
+	if useInvCoupon {
+		u.UnusedInvCoupons--
+	}
 	return nil
 }
 

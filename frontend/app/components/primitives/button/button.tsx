@@ -3,6 +3,7 @@ import { ComponentProps, FC, PropsWithChildren, useMemo } from "react";
 import { twMerge } from "tailwind-merge";
 
 type Variant = "light" | "primary" | "danger";
+type Size = "sm" | "md";
 
 export const ButtonLink: FC<PropsWithChildren<ComponentProps<typeof Link>>> = ({
   to,
@@ -25,8 +26,10 @@ export const ButtonLink: FC<PropsWithChildren<ComponentProps<typeof Link>>> = ({
 };
 
 export const Button: FC<
-  PropsWithChildren<ComponentProps<"button"> & { variant?: Variant }>
-> = ({ children, className, variant, ...props }) => {
+  PropsWithChildren<
+    ComponentProps<"button"> & { variant?: Variant; size?: Size }
+  >
+> = ({ children, className, variant, size = "md", ...props }) => {
   const variantClasses = useMemo(() => {
     switch (variant) {
       case "primary":
@@ -38,12 +41,23 @@ export const Button: FC<
         return "bg-[#F0EFED] active:brightness-90 hover:brightness-90 focus:brightness-90";
     }
   }, [variant]);
+
+  const sizeClasses = useMemo(() => {
+    switch (size) {
+      case "sm":
+        return "py-2 px-3";
+      case "md":
+        return "py-3 px-4";
+    }
+  }, [size]);
+
   return (
     <button
       type="button"
       className={twMerge(
-        "rounded-md bg-neutral-800 py-3 px-4 border border-transparent text-center text-sm transition-all shadow-md hover:shadow-lg  disabled:opacity-50 disabled:shadow-none ml-2",
+        "rounded-md bg-neutral-800 border border-transparent text-center text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:shadow-none ml-2",
         variantClasses,
+        sizeClasses,
         className,
       )}
       {...props}

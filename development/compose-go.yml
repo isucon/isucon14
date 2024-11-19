@@ -2,6 +2,7 @@ services:
   webapp:
     build:
       context: ../webapp/go
+    image: webapp-go
     ports:
       - 8080:8080
     volumes:

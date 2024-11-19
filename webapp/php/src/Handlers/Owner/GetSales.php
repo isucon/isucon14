@@ -9,6 +9,7 @@ use DateTimeZone;
 use Exception;
 use Fig\Http\Message\StatusCodeInterface;
 use IsuRide\Database\Model\Chair;
+use IsuRide\Database\Model\Owner;
 use IsuRide\Database\Model\Ride;
 use IsuRide\Handlers\AbstractHttpHandler;
 use IsuRide\Model\OwnerGetSales200Response;
@@ -85,31 +86,29 @@ class GetSales extends AbstractHttpHandler
         }
 
         $owner = $request->getAttribute('owner');
-        $chairs = [];
+        assert($owner instanceof Owner);
         $chairSales = [];
         try {
             $this->db->beginTransaction();
             $stmt = $this->db->prepare('SELECT * FROM chairs WHERE owner_id = ?');
             $stmt->bindValue(1, $owner->id, PDO::PARAM_STR);
             $stmt->execute();
-            $chairResult = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($chairResult as $chair) {
-                $chairs[] = new Chair(
-                    id: $chair['id'],
-                    ownerId: $chair['owner_id'],
-                    name: $chair['name'],
-                    accessToken: $chair['access_token'],
-                    model: $chair['model'],
-                    isActive: (bool)$chair['is_active'],
-                    createdAt: $chair['created_at'],
-                    updatedAt: $chair['updated_at']
-                );
-            }
+            $chairs = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $res = new OwnerGetSales200Response();
             $res->setTotalSales(0);
             $modelSalesByModel = [];
 
-            foreach ($chairs as $chair) {
+            foreach ($chairs as $row) {
+                $chair = new Chair(
+                    id: $row['id'],
+                    ownerId: $row['owner_id'],
+                    name: $row['name'],
+                    accessToken: $row['access_token'],
+                    model: $row['model'],
+                    isActive: (bool)$row['is_active'],
+                    createdAt: $row['created_at'],
+                    updatedAt: $row['updated_at']
+                );
                 $stmt = $this->db->prepare(
                     '
                 SELECT rides.* 
@@ -162,7 +161,19 @@ class GetSales extends AbstractHttpHandler
     private function sumSales(array $rides): int
     {
         $sale = 0;
-        foreach ($rides as $ride) {
+        foreach ($rides as $row) {
+            $ride = new Ride(
+                id: $row['id'],
+                userId: $row['user_id'],
+                chairId: $row['chair_id'],
+                pickupLatitude: $row['pickup_latitude'],
+                pickupLongitude: $row['pickup_longitude'],
+                destinationLatitude: $row['destination_latitude'],
+                destinationLongitude: $row['destination_longitude'],
+                evaluation: $row['evaluation'],
+                createdAt: $row['created_at'],
+                updatedAt: $row['updated_at']
+            );
             $sale += $this->calculateSale($ride);
         }
         return $sale;

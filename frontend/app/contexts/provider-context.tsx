@@ -8,17 +8,18 @@ import {
   type ReactNode,
 } from "react";
 import {
+  OwnerGetChairsResponse,
   OwnerGetSalesResponse,
+  fetchOwnerGetChairs,
   fetchOwnerGetSales,
 } from "~/apiClient/apiComponents";
 
-type ProviderChair = { id: string; name: string };
-
 type ClientProviderRequest = Partial<{
-  chairs: ProviderChair[];
+  chairs: OwnerGetChairsResponse["chairs"];
   sales: OwnerGetSalesResponse;
-  provider: {
-    id?: string;
+  provider?: {
+    id: string;
+    name: string;
   };
 }>;
 
@@ -36,11 +37,14 @@ const DUMMY_DATA = {
 
 const ClientProviderContext = createContext<Partial<ClientProviderRequest>>({});
 
+const timestamp = (date: string) => Math.floor(new Date(date).getTime() / 1000);
+
 export const ProviderProvider = ({ children }: { children: ReactNode }) => {
   // TODO:
   const [searchParams] = useSearchParams();
 
   const id = searchParams.get("id") ?? undefined;
+  const name = searchParams.get("name") ?? undefined;
   const since = searchParams.get("since") ?? undefined;
   const until = searchParams.get("until") ?? undefined;
 
@@ -56,6 +60,7 @@ export const ProviderProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  const [chairs, setChairs] = useState<OwnerGetChairsResponse>();
   const [sales, setSales] = useState<OwnerGetSalesResponse>();
 
   useEffect(() => {
@@ -67,14 +72,22 @@ export const ProviderProvider = ({ children }: { children: ReactNode }) => {
       });
     } else {
       const abortController = new AbortController();
-      (async () => {
-        setSales(
-          await fetchOwnerGetSales(
-            { queryParams: { since: Number(since), until: Number(until) } },
-            abortController.signal,
-          ),
-        );
-      })().catch((reason) => {
+      Promise.all([
+        fetchOwnerGetChairs({}, abortController.signal).then((res) =>
+          setChairs(res),
+        ),
+        since && until
+          ? fetchOwnerGetSales(
+              {
+                queryParams: {
+                  since: timestamp(since),
+                  until: timestamp(until),
+                },
+              },
+              abortController.signal,
+            ).then((res) => setSales(res))
+          : Promise.resolve(),
+      ]).catch((reason) => {
         if (typeof reason === "string") {
           console.error(`CONSOLE PROMISE ERROR: ${reason}`);
         }
@@ -83,20 +96,15 @@ export const ProviderProvider = ({ children }: { children: ReactNode }) => {
         abortController.abort();
       };
     }
-  }, [setSales, since, until, isDummy]);
+  }, [setChairs, setSales, since, until, isDummy]);
 
   const responseClientProvider = useMemo<ClientProviderRequest>(() => {
     return {
+      chairs: chairs?.chairs ?? [],
       sales,
-      chairs: sales?.chairs?.map((chair) => ({
-        id: chair.id,
-        name: chair.name,
-      })),
-      provider: {
-        id,
-      },
-    } satisfies ClientProviderRequest;
-  }, [sales, id]);
+      provider: id && name ? { id, name } : undefined,
+    };
+  }, [chairs, sales, id, name]);
 
   return (
     <ClientProviderContext.Provider value={responseClientProvider}>

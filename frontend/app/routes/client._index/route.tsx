@@ -64,6 +64,7 @@ export default function Index() {
   // TODO: requestId をベースに配車キャンセルしたい
   /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
   const [requestId, setRequestId] = useState<string>("");
+  const [fare, setFare] = useState<number>();
   const handleRideRequest = useCallback(async () => {
     if (!currentLocation || !destLocation) {
       return;
@@ -76,7 +77,10 @@ export default function Index() {
       headers: {
         Authorization: `Bearer ${data.auth?.accessToken}`,
       },
-    }).then((res) => setRequestId(res.ride_id));
+    }).then((res) => {
+      setRequestId(res.ride_id);
+      setFare(res.fare);
+    });
   }, [data, currentLocation, destLocation]);
 
   useEffect(() => {
@@ -175,10 +179,16 @@ export default function Index() {
       {data?.status && (
         <Modal ref={drivingStateModalRef}>
           {data.status === "PICKUP" && (
-            <Dispatched destLocation={data?.payload?.coordinate?.destination} />
+            <Dispatched
+              destLocation={data?.payload?.coordinate?.destination}
+              fare={fare}
+            />
           )}
           {data.status === "CARRYING" && (
-            <Carrying destLocation={data?.payload?.coordinate?.destination} />
+            <Carrying
+              destLocation={data?.payload?.coordinate?.destination}
+              fare={fare}
+            />
           )}
           {data.status === "ARRIVED" && <Arrived />}
         </Modal>

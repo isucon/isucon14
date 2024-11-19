@@ -57,6 +57,10 @@ func (p *Provider) SetID(id ProviderID) {
 	p.ID = id
 }
 
+func (p *Provider) GetServerID() string {
+	return p.ServerID
+}
+
 func (p *Provider) Tick(ctx *Context) error {
 	if p.tickDone.DoOrSkip() {
 		return nil

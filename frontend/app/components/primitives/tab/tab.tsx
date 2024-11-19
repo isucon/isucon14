@@ -10,7 +10,7 @@ export const Tab = <T extends string>({
   onTabClick,
 }: TextProps<T>) => {
   return (
-    <nav className="border-b mb-4">
+    <nav className="border-b">
       <ul className="flex">
         {tabs.map((tab) => (
           <li

@@ -12,6 +12,7 @@ import (
 	"github.com/isucon/isucon14/bench/benchmarker/scenario"
 	"github.com/isucon/isucon14/bench/benchrun"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
 )
 
 var (
@@ -25,6 +26,8 @@ var (
 	loadTimeoutSeconds int64
 	// エラーが発生した際に非0のexit codeを返すかどうか
 	failOnError bool
+	// メトリクスを出力するかどうか
+	exportMetrics bool
 )
 
 var runCmd = &cobra.Command{
@@ -51,7 +54,7 @@ var runCmd = &cobra.Command{
 			}
 		}
 
-		meter, exporter, err := metrics.NewMeter(cmd.Context())
+		exporter, err := metrics.Setup(!exportMetrics)
 		if err != nil {
 			return fmt.Errorf("failed to create meter: %w", err)
 		}
@@ -59,7 +62,7 @@ var runCmd = &cobra.Command{
 
 		slog.Debug("target", slog.String("targetURL", targetURL), slog.String("targetAddr", targetAddr), slog.String("benchrun.GetTargetAddress()", benchrun.GetTargetAddress()))
 
-		s := scenario.NewScenario(targetURL, targetAddr, paymentURL, contestantLogger, reporter, meter, loadTimeoutSeconds == 0)
+		s := scenario.NewScenario(targetURL, targetAddr, paymentURL, contestantLogger, reporter, otel.Meter("isucon14_benchmarker"), loadTimeoutSeconds == 0)
 
 		b, err := isucandar.NewBenchmark(
 			isucandar.WithoutPanicRecover(),
@@ -101,5 +104,6 @@ func init() {
 	runCmd.Flags().StringVar(&paymentURL, "payment-url", "http://localhost:12345", "payment server URL")
 	runCmd.Flags().Int64VarP(&loadTimeoutSeconds, "load-timeout", "t", 60, "load timeout in seconds (When this value is 0, load does not run and only prepare is run)")
 	runCmd.Flags().BoolVar(&failOnError, "fail-on-error", false, "fail on error")
+	runCmd.Flags().BoolVar(&exportMetrics, "metrics", false, "whether to output metrics")
 	rootCmd.AddCommand(runCmd)
 }

@@ -68,6 +68,10 @@ func (c *Chair) SetID(id ChairID) {
 	c.ID = id
 }
 
+func (c *Chair) GetServerID() string {
+	return c.ServerID
+}
+
 func (c *Chair) Tick(ctx *Context) error {
 	if c.tickDone.DoOrSkip() {
 		return nil

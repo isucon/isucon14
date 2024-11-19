@@ -38,7 +38,7 @@ func (c *Client) AppPostRegister(ctx context.Context, reqBody *api.AppPostUsersR
 	defer closeBody(resp)
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("POST /api/app/usersへのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:%d, actual:%d)", http.StatusOK, resp.StatusCode)
+		return nil, fmt.Errorf("POST /api/app/usersへのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:%d, actual:%d)", http.StatusCreated, resp.StatusCode)
 	}
 
 	resBody := &api.AppPostUsersCreated{}
@@ -72,6 +72,39 @@ func (c *Client) AppGetRequests(ctx context.Context) (*api.AppGetRidesOK, error)
 	resBody := &api.AppGetRidesOK{}
 	if err := json.NewDecoder(resp.Body).Decode(resBody); err != nil {
 		return nil, fmt.Errorf("GET /app/ridesのJSONのdecodeに失敗しました: %w", err)
+	}
+
+	return resBody, nil
+}
+
+func (c *Client) AppPostRidesEstimatedFare(ctx context.Context, reqBody *api.AppPostRidesEstimatedFareReq) (*api.AppPostRidesEstimatedFareOK, error) {
+	reqBodyBuf, err := reqBody.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := c.agent.NewRequest(http.MethodPost, "/api/app/rides/estimated-fare", bytes.NewReader(reqBodyBuf))
+	if err != nil {
+		return nil, err
+	}
+
+	for _, modifier := range c.requestModifiers {
+		modifier(req)
+	}
+
+	resp, err := c.agent.Do(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("POST /app/rides/estimated-fareのリクエストが失敗しました: %w", err)
+	}
+	defer closeBody(resp)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("POST /app/rides/estimated-fareへのリクエストに対して、期待されたHTTPステータスコードが確認できませんでした (expected:%d, actual:%d)", http.StatusOK, resp.StatusCode)
+	}
+
+	resBody := &api.AppPostRidesEstimatedFareOK{}
+	if err := json.NewDecoder(resp.Body).Decode(resBody); err != nil {
+		return nil, fmt.Errorf("POST /app/rides/estimated-fareのJSONのdecodeに失敗しました: %w", err)
 	}
 
 	return resBody, nil

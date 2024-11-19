@@ -83,6 +83,7 @@ func (db *RequestDB) ToSlice() []*Request {
 
 type DBEntry[K ~int] interface {
 	SetID(id K)
+	GetServerID() string
 }
 
 type GenericDB[K ~int, V DBEntry[K]] struct {
@@ -111,6 +112,20 @@ func (db *GenericDB[K, V]) Get(id K) V {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 	return db.m[id]
+}
+
+func (db *GenericDB[K, V]) GetByServerID(serverID string) V {
+	var zero V
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	// TODO ハッシュマップで持って引くように
+	for _, req := range db.m {
+		if req.GetServerID() == serverID {
+			return req
+		}
+	}
+	return zero
 }
 
 func (db *GenericDB[K, V]) Iter() iter.Seq2[K, V] {

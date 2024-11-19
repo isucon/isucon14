@@ -1,6 +1,7 @@
 package world
 
 import (
+	"fmt"
 	"log/slog"
 	"math"
 	"math/rand/v2"
@@ -61,8 +62,8 @@ type World struct {
 func NewWorld(tickTimeout time.Duration, completedRequestChan chan *Request, client WorldClient, contestantLogger *slog.Logger) *World {
 	return &World{
 		Regions: []*Region{
-			NewRegion("A", 0, 0, 100, 100),
-			NewRegion("B", 300, 300, 100, 100),
+			NewRegion("チェアタウン", 0, 0, 100, 100),
+			NewRegion("コシカケシティ", 300, 300, 100, 100),
 		},
 		UserDB:               NewGenericDB[UserID, *User](),
 		ProviderDB:           NewGenericDB[ProviderID, *Provider](),
@@ -82,8 +83,8 @@ func NewWorld(tickTimeout time.Duration, completedRequestChan chan *Request, cli
 }
 
 func (w *World) Tick(ctx *Context) error {
-	if !w.prevTimeout {
-		// 前回タイムアウトしなかったら地域毎に増加させる
+	if w.Time%60 == 59 {
+		// 定期的に地域毎に増加させる
 		for _, region := range w.Regions {
 			increase := int(math.Round(w.userIncrease * (float64(region.UserSatisfactionScore()) / 5)))
 			if increase > 0 {
@@ -156,36 +157,50 @@ func (w *World) Tick(ctx *Context) error {
 type CreateUserArgs struct {
 	// Region ユーザーを配置する地域
 	Region *Region
+	// Inviter 招待したユーザー
+	Inviter *User
 }
 
 // CreateUser 仮想世界にユーザーを作成する
 func (w *World) CreateUser(ctx *Context, args *CreateUserArgs) (*User, error) {
-	registeredData := RegisteredUserData{
+	req := &RegisterUserRequest{
 		UserName:    random.GenerateUserName(),
 		FirstName:   random.GenerateFirstName(),
 		LastName:    random.GenerateLastName(),
 		DateOfBirth: random.GenerateDateOfBirth(),
 	}
+	if args.Inviter != nil {
+		req.InvitationCode = args.Inviter.RegisteredData.InvitationCode
+		args.Inviter.InvitingLock.Lock()
+		defer args.Inviter.InvitingLock.Unlock()
+	}
 
-	res, err := w.Client.RegisterUser(ctx, &RegisterUserRequest{
-		UserName:    registeredData.UserName,
-		FirstName:   registeredData.FirstName,
-		LastName:    registeredData.LastName,
-		DateOfBirth: registeredData.DateOfBirth,
-	})
+	res, err := w.Client.RegisterUser(ctx, req)
 	if err != nil {
 		return nil, WrapCodeError(ErrorCodeFailedToRegisterUser, err)
 	}
 
+	if args.Inviter != nil {
+		args.Inviter.InvCodeUsedCount++
+		args.Inviter.UnusedInvCoupons++
+	}
+
 	u := &User{
-		ServerID:          res.ServerUserID,
-		World:             w,
-		Region:            args.Region,
-		State:             UserStatePaymentMethodsNotRegister,
-		RegisteredData:    registeredData,
+		ServerID: res.ServerUserID,
+		World:    w,
+		Region:   args.Region,
+		State:    UserStatePaymentMethodsNotRegister,
+		RegisteredData: RegisteredUserData{
+			UserName:       req.UserName,
+			FirstName:      req.FirstName,
+			LastName:       req.LastName,
+			DateOfBirth:    req.DateOfBirth,
+			InvitationCode: res.InvitationCode,
+		},
 		PaymentToken:      random.GeneratePaymentToken(),
 		Client:            res.Client,
 		Rand:              random.CreateChildRand(w.RootRand),
+		Invited:           args.Inviter != nil,
 		notificationQueue: make(chan NotificationEvent, 500),
 	}
 	w.PaymentDB.PaymentTokens.Set(u.PaymentToken, u)
@@ -269,6 +284,23 @@ func (w *World) CreateChair(ctx *Context, args *CreateChairArgs) (*Chair, error)
 	return result, nil
 }
 
+func (w *World) checkNearbyChairsResponse(current Coordinate, distance int, response *GetNearbyChairsResponse) error {
+	for _, chair := range response.Chairs {
+		c := w.ChairDB.GetByServerID(chair.ID)
+		if c == nil {
+			return fmt.Errorf("ID:%sの椅子は存在しません", chair.ID)
+		}
+		if c.RegisteredData.Name != chair.Name {
+			return fmt.Errorf("ID:%sの椅子の名前が一致しません", chair.ID)
+		}
+		if c.Model.Name != chair.Model {
+			return fmt.Errorf("ID:%sの椅子のモデルが一致しません", chair.ID)
+		}
+		// TODO 位置バリデーション
+	}
+	return nil
+}
+
 func (w *World) handleTickError(err error) {
 	if errs, ok := UnwrapMultiError(err); ok {
 		for _, err2 := range errs {
@@ -293,6 +325,15 @@ func (w *World) PublishEvent(e Event) {
 	switch data := e.(type) {
 	case *EventRequestCompleted:
 		w.CompletedRequestChan <- data.Request
+		go func() {
+			if data.Request.CalculateEvaluation().Score() > 2 && data.Request.User.InvCodeUsedCount < 3 {
+				w.contestantLogger.Info("既存Userからの招待によってUserが増加します", slog.String("region", data.Request.User.Region.Name))
+				_, err := w.CreateUser(nil, &CreateUserArgs{Region: data.Request.User.Region, Inviter: data.Request.User})
+				if err != nil {
+					w.handleTickError(err)
+				}
+			}
+		}()
 	case *EventUserLeave:
 		w.contestantLogger.Warn("RideRequestの評価が悪かったためUserが離脱しました")
 	}

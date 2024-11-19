@@ -49,17 +49,19 @@ func (c *WorldClient) RegisterUser(ctx *world.Context, data *world.RegisterUserR
 	}
 
 	response, err := client.AppPostRegister(c.ctx, &api.AppPostUsersReq{
-		Username:    data.UserName,
-		Firstname:   data.FirstName,
-		Lastname:    data.LastName,
-		DateOfBirth: data.DateOfBirth,
+		Username:       data.UserName,
+		Firstname:      data.FirstName,
+		Lastname:       data.LastName,
+		DateOfBirth:    data.DateOfBirth,
+		InvitationCode: api.OptString{Set: len(data.InvitationCode) > 0, Value: data.InvitationCode},
 	})
 	if err != nil {
 		return nil, WrapCodeError(ErrorCodeFailedToRegisterUser, err)
 	}
 
 	return &world.RegisterUserResponse{
-		ServerUserID: response.ID,
+		ServerUserID:   response.ID,
+		InvitationCode: response.InvitationCode,
 		Client: &userClient{
 			ctx:    c.ctx,
 			client: client,
@@ -364,6 +366,47 @@ func (c *userClient) GetRequests(ctx *world.Context) (*world.GetRequestsResponse
 
 	return &world.GetRequestsResponse{
 		Requests: requests,
+	}, nil
+}
+
+func (c *userClient) GetEstimatedFare(ctx *world.Context, pickup world.Coordinate, dest world.Coordinate) (*world.GetEstimatedFareResponse, error) {
+	res, err := c.client.AppPostRidesEstimatedFare(c.ctx, &api.AppPostRidesEstimatedFareReq{
+		PickupCoordinate: api.Coordinate{
+			Latitude:  pickup.X,
+			Longitude: pickup.Y,
+		},
+		DestinationCoordinate: api.Coordinate{
+			Latitude:  dest.X,
+			Longitude: dest.Y,
+		},
+	})
+	if err != nil {
+		return nil, WrapCodeError(ErrorCodeFailedToPostRidesEstimatedFare, err)
+	}
+	return &world.GetEstimatedFareResponse{
+		Fare:     res.Fare,
+		Discount: res.Discount,
+	}, nil
+}
+
+func (c *userClient) GetNearbyChairs(ctx *world.Context, current world.Coordinate, distance int) (*world.GetNearbyChairsResponse, error) {
+	res, err := c.client.AppGetNearbyChairs(c.ctx, &api.AppGetNearbyChairsParams{
+		Latitude:  current.X,
+		Longitude: current.Y,
+		Distance:  api.NewOptInt(distance),
+	})
+	if err != nil {
+		return nil, WrapCodeError(ErrorCodeFailedToGetNearbyChairs, err)
+	}
+	return &world.GetNearbyChairsResponse{
+		RetrievedAt: time.UnixMilli(res.RetrievedAt),
+		Chairs: lo.Map(res.Chairs, func(chair api.AppChair, _ int) *world.AppChair {
+			return &world.AppChair{
+				ID:    chair.ID,
+				Name:  chair.Name,
+				Model: chair.Model,
+			}
+		}),
 	}, nil
 }
 

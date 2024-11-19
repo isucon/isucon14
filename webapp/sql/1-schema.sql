@@ -1,5 +1,14 @@
 USE isuride;
 
+DROP TABLE IF EXISTS settings;
+CREATE TABLE settings
+(
+  name  VARCHAR(30) NOT NULL COMMENT '設定名',
+  value TEXT        NOT NULL COMMENT '設定値',
+  PRIMARY KEY (name)
+)
+  COMMENT = 'システム設定テーブル';
+
 DROP TABLE IF EXISTS chair_models;
 CREATE TABLE chair_models
 (

@@ -25,6 +25,17 @@ jobs:
             ./bench/go.sum
       - name: Install Task
         uses: arduino/setup-task@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Build webapp
+        uses: docker/bake-action@v5
+        with:
+          push: false
+          load: true
+          workdir: ./development
+          files: compose-go.yml
+          set: |
+            webapp.cache-from=type=gha,scope=webapp-go-cache
+            webapp.cache-to=type=gha,scope=webapp-go-cache,mode=max
       - name: Build bench
         working-directory: ./bench
         run: |
@@ -32,7 +43,7 @@ jobs:
       - name: Setup webapp/go
         working-directory: ./development
         run: |
-          sudo docker compose -f compose-go.yml up -d --build --wait
+          sudo docker compose -f compose-go.yml up -d --wait
       - name: Run bench
         working-directory: ./bench
         run: |

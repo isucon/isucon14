@@ -1,0 +1,55 @@
+name: Rust CI
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - bench/**/*
+      - webapp/rust/**/*
+      - .github/workflows/rust.yml
+  pull_request:
+    paths:
+      - bench/**/*
+      - webapp/rust/**/*
+      - .github/workflows/rust.yml
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'bench/go.mod'
+          cache-dependency-path: |
+            ./bench/go.sum
+      - name: Install Task
+        uses: arduino/setup-task@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Build webapp
+        uses: docker/bake-action@v5
+        with:
+          push: false
+          load: true
+          workdir: ./development
+          files: compose-rust.yml
+          set: |
+            webapp.cache-from=type=gha,scope=webapp-rust-cache
+            webapp.cache-to=type=gha,scope=webapp-rust-cache,mode=max
+      - name: Build bench
+        working-directory: ./bench
+        run: |
+          task build
+      - name: Setup webapp/rust
+        working-directory: ./development
+        run: |
+          sudo docker compose -f compose-rust.yml up -d --wait
+      - name: Run bench
+        working-directory: ./bench
+        run: |
+          task run-local -- --fail-on-error --payment-url http://host.docker.internal:12345
+      - name: Down webapp/rust
+        working-directory: ./development
+        if: ${{ always() }}
+        run: |
+          sudo docker compose -f compose-rust.yml down -v

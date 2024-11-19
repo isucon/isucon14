@@ -7,10 +7,7 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Level;
 use Monolog\Logger;
 
-$resourcePath = __DIR__ . '/../resource/config.json';
-
 return [
-    'resource_path' => $resourcePath,
     'database' => function (): PDO {
         $host = getenv('ISUCON_DB_HOST') ?: '127.0.0.1';
         $port = getenv('ISUCON_DB_PORT') ?: '3306';
@@ -36,14 +33,7 @@ return [
         );
         return $logger;
     },
-    'payment_gateway' => function () use ($resourcePath): PostPayment {
-        $decoded = json_decode(file_get_contents($resourcePath), true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new RuntimeException('Failed to parse JSON: ' . json_last_error_msg());
-        }
-        if (!isset($decoded['payment_server'])) {
-            throw new RuntimeException('payment_server is not defined in config.json');
-        }
-        return new PostPayment($decoded['payment_server']);
+    'payment_gateway' => function (): PostPayment {
+        return new PostPayment();
     }
 ];

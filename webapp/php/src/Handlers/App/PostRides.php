@@ -10,6 +10,7 @@ use IsuRide\Handlers\AbstractHttpHandler;
 use IsuRide\Model\AppPostRides202Response;
 use IsuRide\Model\AppPostRidesRequest;
 use IsuRide\Model\Coordinate;
+use IsuRide\Model\User;
 use IsuRide\Response\ErrorResponse;
 use PDO;
 use PDOException;
@@ -50,16 +51,17 @@ class PostRides extends AbstractHttpHandler
         }
 
         $user = $request->getAttribute('user');
+        assert($user instanceof User);
         $rideId = new Ulid();
         $this->db->beginTransaction();
-        $rides = [];
         try {
             $stmt = $this->db->prepare('SELECT * FROM rides WHERE user_id = ?');
             $stmt->bindValue(1, $user->id, PDO::PARAM_STR);
             $stmt->execute();
-            $rideResult = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($rideResult as $row) {
-                $rides[] = new Ride(
+            $rides = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $continuingRideCount = 0;
+            foreach ($rides as $row) {
+                $ride = new Ride(
                     id: $row['id'],
                     userId: $row['user_id'],
                     chairId: $row['chair_id'],
@@ -71,9 +73,6 @@ class PostRides extends AbstractHttpHandler
                     createdAt: $row['created_at'],
                     updatedAt: $row['updated_at']
                 );
-            }
-            $continuingRideCount = 0;
-            foreach ($rides as $ride) {
                 $status = $this->getLatestRideStatus($this->db, $ride->id);
                 if ($status !== 'COMPLETED' && $status !== 'CANCELED') {
                     $continuingRideCount++;

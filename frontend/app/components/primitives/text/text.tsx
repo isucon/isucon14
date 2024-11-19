@@ -1,11 +1,12 @@
 import { FC, PropsWithChildren } from "react";
+import { twMerge } from "tailwind-merge";
 
-type Size = "xl" | "lg" | "sm" | "xs";
+type Size = "2xl" | "xl" | "lg" | "sm" | "xs";
 
 type Variant = "danger";
 
 type TextProps = PropsWithChildren<{
-  tagName?: "p" | "div";
+  tagName?: "p" | "div" | "span";
   bold?: boolean;
   size?: Size;
   variant?: Variant;
@@ -14,6 +15,8 @@ type TextProps = PropsWithChildren<{
 
 const getSizeClass = (size?: Size) => {
   switch (size) {
+    case "2xl":
+      return "text-2xl";
     case "xl":
       return "text-xl";
     case "lg":
@@ -47,14 +50,12 @@ export const Text: FC<TextProps> = ({
   const Tag = tagName;
   return (
     <Tag
-      className={[
+      className={twMerge([
         bold ? "font-bold" : "",
         getSizeClass(size),
         getVariantClass(variant),
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      ])}
     >
       {children}
     </Tag>
