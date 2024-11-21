@@ -611,13 +611,25 @@ def app_get_ride(
     return response
 
 
+class AppGetNotificationResponseChairStats(BaseModel):
+    total_rides_count: int
+    total_evaluation_avg: float
+
+
+class AppGetNotificationResponseChair(BaseModel):
+    id: str
+    name: str
+    model: str
+    stats: AppGetNotificationResponseChairStats
+
+
 class AppGetNotificationResponse(BaseModel):
     ride_id: str
     pickup_coordinate: Coordinate
     destination_coordinate: Coordinate
     fare: int
     status: str
-    chair: AppChair | None = None
+    chair: AppGetNotificationResponseChair | None = None
     created_at: int
     updated_at: int
 
@@ -656,8 +668,43 @@ def app_get_notification(
             updated_at=10000,
         )
 
+        if ride.chair_id:
+            row = conn.execute(
+                text("SELECT * FROM chairs WHERE id = :chair_id"),
+                {"chair_id": ride.chair_id},
+            ).fetchone()
+
+            chair: Chair = Chair(**row._mapping)
+
+            stats = get_chair_stats(conn, ride.chair_id)
+
+            notification_response.chair = AppGetNotificationResponseChair(
+                id=chair.id, name=chair.name, model=chair.model, stats=chair.stats
+            )
+
         # TODO: check the chair is here
     return notification_response
+
+
+def get_chair_stats(conn, chair_id: str) -> AppGetNotificationResponseChairStats:
+    rides = engine.execute(
+        text("SELECT * FROM rides WHERE chair_id = :chair_id ORDER BY updated_at DESC"),
+        {"chair_id": chair_id},
+    ).fetchall()
+    total_ride_count: int = len(rides)
+    total_evaluation: float = 0.0
+
+    for ride in rides:
+        chair_locations = conn.execute(
+            text(
+                "SELECT * FROM chair_locations WHERE chair_id = :chair_id AND created_at BETWEEN :created_at AND :updated_at ORDER BY created_at"
+            ),
+            {
+                "chair_id": chair_id,
+                "created_at": ride.created_at,
+                "updated_at": ride.updated_at,
+            },
+        )
 
 
 class AppGetNearByChairsResponse(BaseModel):
@@ -665,11 +712,64 @@ class AppGetNearByChairsResponse(BaseModel):
     retrieved_at: int
 
 
+class AppGetNearbyChairsResponseChair(BaseModel):
+    id: str
+    name: str
+    model: str
+    current_coordinate: Coordinate
+
+
 @router.get(
     "/nearby-chairs",
     response_model=AppGetNearByChairsResponse,
     status_code=200,
 )
-def app_get_near_by_chairs():
-    # TODO: 先にエンドポイントだけ用意しておく
-    return AppGetNearByChairsResponse(chairs=[], retrieved_at=100)
+def app_get_near_by_chairs(latitude: int, longitude: int, distance: int = 50):
+    coordinate = Coordinate(latitude, longitude)
+    with engine.begin() as conn:
+        chairs = conn.execute(
+            text("SELECT * FROM chairs"),
+        ).fetchall()
+
+        near_by_chairs = []
+        for chair in chairs:
+            ride = conn.execute(
+                "SELECT * FROM rides WHERE chair_id = :chair_id ORDER BY created_at DESC LIMIT 1",
+                {"chair_id": chair.id},
+            ).fetchone()
+
+            if ride:
+                # 過去にライドが存在し、かつ、それが完了していない場合はスキップ
+                status = get_latest_ride_status(conn, ride.id)
+                if status != "COMPLETED":
+                    continue
+
+            # 5分以内に更新されている最新の位置情報を取得
+            chair_location = conn.execute(
+                "SELECT * FROM chair_locations WHERE chair_id = :chair_id AND created_at > DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 5 MINUTE) ORDER BY created_at DESC LIMIT 1",
+                {"chair_id": chair.id},
+            ).fetchone()
+
+            if (
+                calculate_distance(
+                    coordinate.latitude,
+                    coordinate.longitude,
+                    chair_location.latitude,
+                    chair_location.longitude,
+                )
+                <= distance
+            ):
+                near_by_chairs.append(
+                    AppGetNearbyChairsResponseChair(
+                        id=chair.id,
+                        name=chair.name,
+                        model=chair.model,
+                        current_coordinate=Coordinate(
+                            latitude=chair_location.latitude,
+                            longitude=chair_location.longitude,
+                        ),
+                    )
+                )
+        retrieved_at = conn.execute(text("SELECT CURRENT_TIMESTAMP(6)")).scalar()
+
+    return AppGetNearByChairsResponse(chairs=near_by_chairs, retrieved_at=retrieved_at)
