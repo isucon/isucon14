@@ -110,7 +110,12 @@ def chair_post_coordinate(
             text(
                 "INSERT INTO chair_locations (id, chair_id, latitude, longitude) VALUES (:id, :chair_id, :latitude, :longitude)"
             ),
-            {},  # TODO: here
+            {
+                "id": chair_location_id,
+                "chair_id": chair.id,
+                "latitude": req.latitude,
+                "longitude": req.longitude,
+            },
         )
 
         row = conn.execute(
@@ -119,7 +124,7 @@ def chair_post_coordinate(
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        location = ChairLocation(**row)
+        location = ChairLocation(**row._mapping)
 
         row = conn.execute(
             text(
