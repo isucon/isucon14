@@ -4,12 +4,14 @@ import (
 	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -104,6 +106,16 @@ func setup() http.Handler {
 		//authedMux.HandleFunc("GET /api/chair/notification", chairGetNotificationSSE)
 		authedMux.HandleFunc("GET /api/chair/notification", chairGetNotification)
 		authedMux.HandleFunc("POST /api/chair/rides/{ride_id}/status", chairPostRideStatus)
+
+		go func() {
+			// TODO シェルスクリプトでcurlをループさせる
+			for {
+				time.Sleep(100 * time.Millisecond)
+				if err := matching(); err != nil {
+					log.Println(err)
+				}
+			}
+		}()
 	}
 
 	return mux

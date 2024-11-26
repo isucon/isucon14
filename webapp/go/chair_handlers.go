@@ -179,96 +179,87 @@ type chairGetNotificationResponseData struct {
 	Status                string     `json:"status"`
 }
 
-func chairGetNotification(w http.ResponseWriter, r *http.Request) {
-	chair := r.Context().Value("chair").(*Chair)
-
-	if _, err := db.Exec("SELECT * FROM chairs WHERE id = ? FOR UPDATE", chair.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+// TODO API化
+func matching() error {
+	// MEMO: 一旦最も待たせているリクエストに適当な空いている椅子マッチさせる実装とする。おそらくもっといい方法があるはず…
+	ride := &Ride{}
+	if err := db.Get(ride, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 1`); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
 	}
 
-	found := true
+	matched := &Chair{}
+	empty := false
+	for i := 0; i < 10; i++ {
+		if err := db.Get(matched, "SELECT * FROM chairs INNER JOIN (SELECT id FROM chairs WHERE is_active = TRUE ORDER BY RAND() LIMIT 1) AS tmp ON chairs.id = tmp.id LIMIT 1"); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
+			return err
+		}
+
+		if err := db.Get(&empty, "SELECT COUNT(*) = 0 FROM (SELECT COUNT(chair_sent_at) = 6 AS completed FROM ride_statuses WHERE ride_id IN (SELECT id FROM rides WHERE chair_id = ?) GROUP BY ride_id) is_completed WHERE completed = FALSE", matched.ID); err != nil {
+			return err
+		}
+		if empty {
+			break
+		}
+	}
+	if !empty {
+		return nil
+	}
+
+	if _, err := db.Exec("UPDATE rides SET chair_id = ? WHERE id = ?", matched.ID, ride.ID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func chairGetNotification(w http.ResponseWriter, r *http.Request) {
+	chair := r.Context().Value("chair").(*Chair)
 	ride := &Ride{}
 	yetSentRideStatus := RideStatus{}
 	status := ""
+
 	if err := db.Get(ride, `SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1`, chair.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			found = false
-		} else {
-			writeError(w, http.StatusInternalServerError, err)
+			writeJSON(w, http.StatusOK, &chairGetNotificationResponse{})
 			return
 		}
-	}
-
-	if found {
-		if err := db.Get(&yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				status, err = getLatestRideStatus(db, ride.ID)
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, err)
-					return
-				}
-			} else {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
-		} else {
-			status = yetSentRideStatus.Status
-		}
-	}
-
-	tx, err := db.Beginx()
-	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	defer tx.Rollback()
 
-	if yetSentRideStatus.ID == "" && (!found || status == "COMPLETED") {
-		matched := &Ride{}
-		// MEMO: 一旦最も待たせているリクエストにマッチさせる実装とする。おそらくもっといい方法があるはず…
-		if err := tx.Get(matched, `SELECT * FROM rides WHERE chair_id IS NULL ORDER BY created_at LIMIT 1 FOR UPDATE`); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				writeJSON(w, http.StatusOK, &chairGetNotificationResponse{})
-				return
-			}
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		if _, err := tx.Exec("UPDATE rides SET chair_id = ? WHERE id = ?", chair.ID, matched.ID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		if !found {
-			ride = matched
-			if err := tx.Get(&yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
+	if err := db.Get(&yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			status, err = getLatestRideStatus(db, ride.ID)
+			if err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
-			status = yetSentRideStatus.Status
+		} else {
+			writeError(w, http.StatusInternalServerError, err)
+			return
 		}
+	} else {
+		status = yetSentRideStatus.Status
 	}
 
 	user := &User{}
-	err = tx.Get(user, "SELECT * FROM users WHERE id = ? FOR SHARE", ride.UserID)
+	err := db.Get(user, "SELECT * FROM users WHERE id = ? FOR SHARE", ride.UserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	if yetSentRideStatus.ID != "" {
-		_, err := tx.Exec(`UPDATE ride_statuses SET chair_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
+		_, err := db.Exec(`UPDATE ride_statuses SET chair_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?`, yetSentRideStatus.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
 	}
 
 	writeJSON(w, http.StatusOK, &chairGetNotificationResponse{
