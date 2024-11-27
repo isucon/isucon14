@@ -1,4 +1,4 @@
-import { Form } from "@remix-run/react";
+import { Form, redirect, useNavigate } from "@remix-run/react";
 import { MouseEventHandler, useCallback, useRef, useState } from "react";
 import colors from "tailwindcss/colors";
 import { fetchAppPostRideEvaluation } from "~/apiClient/apiComponents";
@@ -7,32 +7,38 @@ import { Button } from "~/components/primitives/button/button";
 import { Rating } from "~/components/primitives/rating/rating";
 import { Text } from "~/components/primitives/text/text";
 import { useClientAppRequestContext } from "~/contexts/user-context";
+import { isClientApiError } from "~/types";
 
 export const Arrived = () => {
   const { auth, payload } = useClientAppRequestContext();
   const [rating, setRating] = useState(0);
+  const navigate = useNavigate();
   const modalRef = useRef<{ close: () => void }>(null);
 
   const onClick: MouseEventHandler<HTMLButtonElement> = useCallback(
     (e) => {
       e.preventDefault();
-      try {
-        void fetchAppPostRideEvaluation({
-          headers: {
-            Authorization: `Bearer ${auth?.accessToken}`,
-          },
-          pathParams: {
-            rideId: payload?.ride_id ?? "",
-          },
-          body: {
-            evaluation: rating,
-          },
-        });
-      } finally {
-        if (modalRef.current) {
-          modalRef.current.close();
+      (async () => {
+        try {
+          await fetchAppPostRideEvaluation({
+            pathParams: {
+              rideId: payload?.ride_id ?? "",
+            },
+            body: {
+              evaluation: rating,
+            },
+          });
+        } catch (error) {
+          if (isClientApiError(error)) {
+            if (error.stack.status === 400)
+              [navigate("/client/register-payment")];
+          }
+        } finally {
+          if (modalRef.current) {
+            modalRef.current.close();
+          }
         }
-      }
+      })();
     },
     [auth, payload, rating, modalRef],
   );
