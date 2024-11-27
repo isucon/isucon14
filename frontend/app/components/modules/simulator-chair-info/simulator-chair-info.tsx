@@ -151,9 +151,9 @@ export const SimulatorChairInfo: FC<{ chair: SimulatorChair }> = ({
         </div>
       </div>
       <p className="text-xs px-2 mt-2">
-        <span className="text-gray-500 me-1">Session ID:</span>
+        <span className="text-gray-500 me-1">Chair ID:</span>
         {/* TODO: Session IDの表示 */}
-        <span>xxxx</span>
+        <span>{chair.id}</span>
       </p>
     </div>
   );

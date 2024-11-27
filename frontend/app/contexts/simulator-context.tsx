@@ -7,23 +7,20 @@ import {
   useState,
 } from "react";
 import type { Coordinate } from "~/apiClient/apiSchemas";
-import { getOwners, getSimulateChair } from "~/utils/get-initial-data";
+import { getSimulateChair } from "~/utils/get-initial-data";
 
 import { apiBaseURL } from "~/apiClient/APIBaseURL";
 import {
   ChairGetNotificationResponse,
   fetchChairGetNotification,
 } from "~/apiClient/apiComponents";
-import type { ClientChairRide, SimulatorChair, SimulatorOwner } from "~/types";
+import type { ClientChairRide, SimulatorChair } from "~/types";
 
 type ClientSimulatorContextProps = {
-  owners: SimulatorOwner[];
   targetChair?: SimulatorChair;
 };
 
-const ClientSimulatorContext = createContext<ClientSimulatorContextProps>({
-  owners: [],
-});
+const ClientSimulatorContext = createContext<ClientSimulatorContextProps>({});
 
 function jsonFromSseResult<T>(value: string) {
   const data = value.slice("data:".length).trim();
@@ -193,33 +190,12 @@ export const SimulatorProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  const owners = useMemo(
-    () =>
-      getOwners().map(
-        (owner) =>
-          ({
-            ...owner,
-            chair: {
-              ...owner.chair,
-              coordinateState: {
-                setter(coordinate) {
-                  this.coordinate = coordinate;
-                },
-              },
-              chairNotification: undefined,
-            } satisfies SimulatorChair,
-          }) satisfies SimulatorOwner,
-      ),
-    [],
-  );
-
   const request = useClientChairNotification(simulateChairData?.id);
   const [currentCoodinate, setCurrentCoordinate] = useState<Coordinate>();
 
   return (
     <ClientSimulatorContext.Provider
       value={{
-        owners,
         targetChair: simulateChairData
           ? {
               ...simulateChairData,
@@ -228,6 +204,7 @@ export const SimulatorProvider = ({ children }: { children: ReactNode }) => {
                 setter: setCurrentCoordinate,
                 coordinate: currentCoodinate,
               },
+              token: simulateChairData?.token,
             }
           : undefined,
       }}
