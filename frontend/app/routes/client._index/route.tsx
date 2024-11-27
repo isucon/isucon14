@@ -328,11 +328,7 @@ export default function Index() {
             />
           )}
           {internalStatus === "ARRIVED" && (
-            <Arrived
-              onEvaluated={() => {
-                statusModalRef.current?.close();
-              }}
-            />
+            <Arrived onEvaluated={() => statusModalRef.current?.close()} />
           )}
         </Modal>
       )}
