@@ -7,7 +7,7 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=/opt/isucon-env-checker/warmup.sh
 ExecStart=/opt/isucon-env-checker/run-isucon-env-checker.sh
-TimeoutStopUSec=5min
+TimeoutStopSec=5min
 
 [Install]
 WantedBy=multi-user.target
