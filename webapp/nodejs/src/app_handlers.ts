@@ -26,6 +26,7 @@ import {
   FARE_PER_DISTANCE,
   getLatestRideStatus,
   INITIAL_FARE,
+  responseError,
 } from "./common.js";
 import type { CountResult } from "./types/util.js";
 import { requestPaymentGatewayPostPayment } from "./payment_gateway.js";
@@ -47,8 +48,11 @@ export const appPostUsers = async (ctx: Context<Environment>) => {
     reqJson.lastname === "" ||
     reqJson.date_of_birth === ""
   ) {
-    return ctx.text(
-      "required fields(username, firstname, lastname, date_of_birth) are empty",
+    return responseError(
+      ctx,
+      new Error(
+        "required fields(username, firstname, lastname, date_of_birth) are empty",
+      ),
       400,
     );
   }
@@ -86,7 +90,11 @@ export const appPostUsers = async (ctx: Context<Environment>) => {
         `INV_${reqJson.invitation_code}`,
       );
       if (coupons.length >= 3) {
-        return ctx.text("この招待コードは使用できません。", 400);
+        return responseError(
+          ctx,
+          new Error("この招待コードは使用できません。"),
+          400,
+        );
       }
 
       // ユーザーチェック
@@ -95,7 +103,11 @@ export const appPostUsers = async (ctx: Context<Environment>) => {
         [reqJson.invitation_code],
       );
       if (inviter.length === 0) {
-        return ctx.text("この招待コードは使用できません。", 400);
+        return responseError(
+          ctx,
+          new Error("この招待コードは使用できません。"),
+          400,
+        );
       }
 
       // 招待クーポン付与
@@ -124,14 +136,18 @@ export const appPostUsers = async (ctx: Context<Environment>) => {
     );
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
 export const appPostPaymentMethods = async (ctx: Context<Environment>) => {
   const reqJson = await ctx.req.json<{ token: string }>();
   if (reqJson.token === "") {
-    return ctx.text("token is required but was empty", 400);
+    return responseError(
+      ctx,
+      new Error("token is required but was empty"),
+      400,
+    );
   }
   const user = ctx.var.user;
   await ctx.var.dbConn.query(
@@ -220,7 +236,7 @@ export const appGetRides = async (ctx: Context<Environment>) => {
     );
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
@@ -230,8 +246,11 @@ export const appPostRides = async (ctx: Context<Environment>) => {
     destination_coordinate: Coordinate;
   }>();
   if (!reqJson.pickup_coordinate || !reqJson.destination_coordinate) {
-    return ctx.text(
-      "required fields(pickup_coordinate, destination_coordinate) are empty",
+    return responseError(
+      ctx,
+      new Error(
+        "required fields(pickup_coordinate, destination_coordinate) are empty",
+      ),
       400,
     );
   }
@@ -251,7 +270,7 @@ export const appPostRides = async (ctx: Context<Environment>) => {
       }
     }
     if (continuingRideCount > 0) {
-      return ctx.text("ride already exists", 409);
+      return responseError(ctx, new Error("ride already exists"), 409);
     }
     await ctx.var.dbConn.query(
       "INSERT INTO rides (id, user_id, pickup_latitude, pickup_longitude, destination_latitude, destination_longitude) VALUES (?, ?, ?, ?, ?, ?)",
@@ -336,7 +355,7 @@ export const appPostRides = async (ctx: Context<Environment>) => {
     );
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
@@ -346,8 +365,11 @@ export const appPostRidesEstimatedFare = async (ctx: Context<Environment>) => {
     destination_coordinate: Coordinate;
   }>();
   if (!reqJson.pickup_coordinate || !reqJson.destination_coordinate) {
-    return ctx.text(
-      "required fields(pickup_coordinate, destination_coordinate) are empty",
+    return responseError(
+      ctx,
+      new Error(
+        "required fields(pickup_coordinate, destination_coordinate) are empty",
+      ),
       400,
     );
   }
@@ -379,7 +401,7 @@ export const appPostRidesEstimatedFare = async (ctx: Context<Environment>) => {
     );
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
@@ -387,7 +409,11 @@ export const appPostRideEvaluatation = async (ctx: Context<Environment>) => {
   const rideId = ctx.req.param("ride_id");
   const reqJson = await ctx.req.json<{ evaluation: number }>();
   if (reqJson.evaluation < 1 || reqJson.evaluation > 5) {
-    return ctx.text("evaluation must be between 1 and 5", 400);
+    return responseError(
+      ctx,
+      new Error("evaluation must be between 1 and 5"),
+      400,
+    );
   }
   await ctx.var.dbConn.beginTransaction();
   try {
@@ -396,11 +422,11 @@ export const appPostRideEvaluatation = async (ctx: Context<Environment>) => {
       rideId,
     );
     if (!ride) {
-      return ctx.text("ride not found", 404);
+      return responseError(ctx, new Error("ride not found"), 404);
     }
     const status = await getLatestRideStatus(ctx.var.dbConn, ride.id);
     if (status !== "ARRIVED") {
-      return ctx.text("not arrived yet", 400);
+      return responseError(ctx, new Error("ride not arrived yet"), 400);
     }
 
     const [result] = await ctx.var.dbConn.query<ResultSetHeader>(
@@ -408,7 +434,7 @@ export const appPostRideEvaluatation = async (ctx: Context<Environment>) => {
       [reqJson.evaluation, rideId],
     );
     if (result.affectedRows === 0) {
-      return ctx.text("ride not found", 404);
+      return responseError(ctx, new Error("ride not found"), 404);
     }
 
     await ctx.var.dbConn.query(
@@ -421,14 +447,14 @@ export const appPostRideEvaluatation = async (ctx: Context<Environment>) => {
       rideId,
     );
     if (!ride) {
-      return ctx.text("ride not found", 404);
+      return responseError(ctx, new Error("ride not found"), 404);
     }
 
     const [[paymentToken]] = await ctx.var.dbConn.query<
       Array<PaymentToken & RowDataPacket>
     >("SELECT * FROM payment_tokens WHERE user_id = ?", [ride.user_id]);
     if (!paymentToken) {
-      return ctx.text("payment token not registered", 400);
+      return responseError(ctx, new Error("payment token not registered"), 400);
     }
     const fare = await calculateDiscountedFare(
       ctx.var.dbConn,
@@ -457,7 +483,7 @@ export const appPostRideEvaluatation = async (ctx: Context<Environment>) => {
       },
     );
     if (err instanceof ErroredUpstream) {
-      return ctx.text(`${err}`, 502);
+      return responseError(ctx, err, 502);
     }
     await ctx.var.dbConn.commit();
     return ctx.json(
@@ -466,9 +492,9 @@ export const appPostRideEvaluatation = async (ctx: Context<Environment>) => {
       },
       200,
     );
-  } catch (err) {
+  } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${err}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
@@ -571,7 +597,7 @@ export const appGetNotification = async (ctx: Context<Environment>) => {
     return ctx.json(response, 200);
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
@@ -631,23 +657,27 @@ export const appGetNearbyChairs = async (ctx: Context<Environment>) => {
   const lonStr = ctx.req.query("longitude");
   const distanceStr = ctx.req.query("distance");
   if (!latStr || !lonStr) {
-    return ctx.text("latitude and longitude is empty", 400);
+    return responseError(
+      ctx,
+      new Error("latitude and longitude is empty"),
+      400,
+    );
   }
 
   const lat = atoi(latStr);
   if (lat === false) {
-    return ctx.text("latitude is invalid", 400);
+    return responseError(ctx, new Error("latitude is invalid"), 400);
   }
   const lon = atoi(lonStr);
   if (lon === false) {
-    return ctx.text("longitude is invalid", 400);
+    return responseError(ctx, new Error("longitude is invalid"), 400);
   }
 
   let distance: number | false = 50;
   if (distanceStr) {
     distance = atoi(distanceStr);
     if (distance === false) {
-      return ctx.text("distance is invalid", 400);
+      return responseError(ctx, new Error("distance is invalid"), 400);
     }
   }
 
@@ -722,9 +752,9 @@ export const appGetNearbyChairs = async (ctx: Context<Environment>) => {
       },
       200,
     );
-  } catch (err) {
+  } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${err}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 

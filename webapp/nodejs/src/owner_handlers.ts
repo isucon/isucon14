@@ -4,14 +4,18 @@ import { secureRandomStr } from "./utils/random.js";
 import { setCookie } from "hono/cookie";
 import type { RowDataPacket } from "mysql2";
 import type { Chair, Ride } from "./types/models.js";
-import { calculateSale } from "./common.js";
+import { calculateSale, responseError } from "./common.js";
 import { ulid } from "ulid";
 
 export const ownerPostOwners = async (ctx: Context<Environment>) => {
   const reqJson = await ctx.req.json<{ name: string }>();
   const { name } = reqJson;
   if (!name) {
-    return ctx.text("some of required fields(name) are empty", 400);
+    return responseError(
+      ctx,
+      new Error("some of required fields(name) are empty"),
+      400,
+    );
   }
   const ownerId = ulid();
   const accessToken = secureRandomStr(32);
@@ -74,7 +78,7 @@ export const ownerGetSales = async (ctx: Context<Environment>) => {
     });
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
