@@ -50,3 +50,4 @@ services:
   matcher:
     image: mirror.gcr.io/curlimages/curl:latest
     command: /bin/sh -c "while true; do curl -s http://nginx:8080/api/internal/matching; sleep 0.5; done"
+    # CIをテストするための適当な修正
