@@ -45,4 +45,4 @@ services:
       test: mysqladmin ping -h 127.0.0.1 -uisucon -pisucon
   matcher:
     image: mirror.gcr.io/curlimages/curl:latest
-    command: /bin/sh -c "while true; do curl -s http://host.docker.internal:8080/api/internal/matching; sleep 0.5; done"
+    command: /bin/sh -c "while true; do curl -s -H 'Host:localhost' http://host.docker.internal:8080/api/internal/matching; sleep 0.5; done"
