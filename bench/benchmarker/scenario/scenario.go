@@ -232,6 +232,7 @@ func (s *Scenario) Load(ctx context.Context, step *isucandar.BenchmarkStep) erro
 	defer ticker.Stop()
 	sendResultWait := sync.WaitGroup{}
 	defer sendResultWait.Wait()
+	mu := sync.Mutex{}
 
 	go func() {
 		for {
@@ -240,9 +241,11 @@ func (s *Scenario) Load(ctx context.Context, step *isucandar.BenchmarkStep) erro
 				return
 			case <-ticker.C:
 				sendResultWait.Add(1)
+				mu.Lock()
 				if err := sendResult(s, false, false); err != nil {
 					slog.Error(err.Error())
 				}
+				mu.Unlock()
 				sendResultWait.Done()
 			}
 		}
