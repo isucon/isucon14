@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { setCookie } from "hono/cookie";
 import type { RowDataPacket } from "mysql2";
 import { ulid } from "ulid";
-import { getLatestRideStatus } from "./common.js";
+import { getLatestRideStatus, responseError } from "./common.js";
 import type { Environment } from "./types/hono.js";
 import type {
   ChairLocation,
@@ -22,8 +22,11 @@ export const chairPostChairs = async (ctx: Context<Environment>) => {
   }>();
   const { name, model, chair_register_token } = reqJson;
   if (!name || !model || !chair_register_token) {
-    return ctx.text(
-      "some of required fields(name, model, chair_register_token) are empty",
+    return responseError(
+      ctx,
+      new Error(
+        "some of required fields(name, model, chair_register_token) are empty",
+      ),
       400,
     );
   }
@@ -32,7 +35,7 @@ export const chairPostChairs = async (ctx: Context<Environment>) => {
     [chair_register_token],
   );
   if (!owner) {
-    return ctx.text("invalid chair_register_token", 401);
+    return responseError(ctx, new Error("invalid chair_register_token"), 401);
   }
   const chairID = ulid();
   const accessToken = secureRandomStr(32);
@@ -55,7 +58,7 @@ export const chairPostActivity = async (ctx: Context<Environment>) => {
       chair.id,
     ]);
   } catch (e) {
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
   return ctx.body(null, 204);
 };
@@ -106,7 +109,7 @@ export const chairPostCoordinate = async (ctx: Context<Environment>) => {
     return ctx.json({ recorded_at: location.created_at.getTime() }, 200);
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
@@ -169,7 +172,7 @@ export const chairGetNotification = async (ctx: Context<Environment>) => {
     );
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };
 
@@ -184,10 +187,10 @@ export const chairPostRideStatus = async (ctx: Context<Environment>) => {
       [rideID],
     );
     if (!ride) {
-      return ctx.text("ride not found", 404);
+      return responseError(ctx, new Error("ride not found"), 404);
     }
     if (ride.chair_id !== chair.id) {
-      return ctx.text("not assigned to this ride", 400);
+      return responseError(ctx, new Error("cnot assigned to this ride"), 400);
     }
     switch (reqJson.status) {
       // Acknowledge the ride
@@ -201,7 +204,11 @@ export const chairPostRideStatus = async (ctx: Context<Environment>) => {
       case "CARRYING": {
         const status = await getLatestRideStatus(ctx.var.dbConn, ride.id);
         if (status !== "PICKUP") {
-          return ctx.text("chair has not arrived yet", 400);
+          return responseError(
+            ctx,
+            new Error("chair has not arrived yet"),
+            400,
+          );
         }
         await ctx.var.dbConn.query(
           "INSERT INTO ride_statuses (id, ride_id, status) VALUES (?, ?, ?)",
@@ -210,12 +217,12 @@ export const chairPostRideStatus = async (ctx: Context<Environment>) => {
         break;
       }
       default:
-        return ctx.text("invalid status", 400);
+        return responseError(ctx, new Error("invalid status"), 400);
     }
     await ctx.var.dbConn.commit();
     return ctx.body(null, 204);
   } catch (e) {
     await ctx.var.dbConn.rollback();
-    return ctx.text(`${e}`, 500);
+    return responseError(ctx, e, 500);
   }
 };

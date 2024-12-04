@@ -32,6 +32,7 @@ import type { Environment } from "./types/hono.js";
 import { execSync } from "node:child_process";
 import { internalGetMatching } from "./internal_handlers.js";
 import { createPool } from "mysql2/promise";
+import { responseError } from "./common.js";
 
 const pool = createPool({
   host: process.env.ISUCON_DB_HOST || "127.0.0.1",
@@ -110,7 +111,7 @@ async function postInitialize(ctx: Context<Environment>) {
   try {
     execSync("../sql/init.sh", { stdio: "inherit" });
   } catch (error) {
-    return ctx.text(`Failed to initialize\n${error}`, 500);
+    return responseError(ctx, error, 500);
   }
   try {
     await ctx.var.dbConn.query(
@@ -118,7 +119,7 @@ async function postInitialize(ctx: Context<Environment>) {
       [body.payment_server],
     );
   } catch (error) {
-    return ctx.text(`Internal Server Error\n${error}`, 500);
+    return responseError(ctx, error, 500);
   }
   return ctx.json({ language: "node" });
 }
