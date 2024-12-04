@@ -6,7 +6,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"errors"
-	"fmt"
+	"io"
 	"os"
 	"syscall"
 
@@ -43,10 +43,8 @@ func (rep *FDReporter) Report(result *resources.BenchmarkResult) error {
 	if err != nil {
 		return err
 	}
-	if len(wire) == 65536 {
-		fmt.Fprintln(os.Stderr, "marshalled BenchmarkResult length is 65536")
-	}
 
+	// PIPEのデータサイズの上限65536であるが、Headerが2byteなので、上限として65535(0xFFFF)を設定
 	if len(wire) > 65535 {
 		return errors.New("marshalled BenchmarkResult is too long (max: 65535)")
 	}
@@ -54,17 +52,32 @@ func (rep *FDReporter) Report(result *resources.BenchmarkResult) error {
 	lenBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(lenBuf, uint16(len(wire)))
 
-	if _, err := rep.io.Write(lenBuf); err != nil {
+	if err := rep.Write(lenBuf); err != nil {
 		return err
 	}
-	if _, err := rep.io.Write(wire); err != nil {
+	if err := rep.Write(wire); err != nil {
 		return err
 	}
-	if err := rep.io.Flush(); err != nil {
+	if err := rep.Flush(); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (rep *FDReporter) Write(buf []byte) error {
+	// write(2) は PIPE_BUF (linux なら 4096) 以上の書き込みはatomicにならないので書き込みが終わるまで繰り返す
+	if n, err := rep.io.Write(nil); err != nil {
+		if errors.Is(err, io.ErrShortWrite) {
+			return rep.Write(buf[n:])
+		}
+		return err
+	}
+	return nil
+}
+
+func (rep *FDReporter) Flush() error {
+	return rep.io.Flush()
 }
 
 func NewFDReporter(fd int) (*FDReporter, error) {
