@@ -137,7 +137,7 @@ func (r *Request) CalculateEvaluation() Evaluation {
 			// 100ticks以内なら満点
 			result.Matching = 1
 		} else {
-			result.Matching = float64(100*100) / float64(diff*diff)
+			result.Matching = f1_x2(float64(100), float64(diff))
 		}
 	}
 	{
@@ -147,7 +147,7 @@ func (r *Request) CalculateEvaluation() Evaluation {
 			// 割り当てられた椅子が自分の場所から距離25以内なら満点
 			result.Dispatch = 1
 		} else {
-			result.Dispatch = float64(25*25) / float64(distance*distance)
+			result.Dispatch = f1_x2(float64(25), float64(distance))
 		}
 	}
 	{
@@ -159,7 +159,7 @@ func (r *Request) CalculateEvaluation() Evaluation {
 			// 理想時間との誤差が15ticks以内なら満点
 			result.Pickup = 1
 		} else {
-			result.Pickup = float64(15*15) / float64(diff*diff)
+			result.Pickup = f1_x2(float64(15), float64(diff))
 		}
 	}
 	{
@@ -171,7 +171,7 @@ func (r *Request) CalculateEvaluation() Evaluation {
 			// 理想時間との誤差が5ticks以内なら満点
 			result.Drive = 1
 		} else {
-			result.Drive = float64(5*5) / float64(diff*diff)
+			result.Drive = f1_x2(float64(5), float64(diff))
 		}
 	}
 
@@ -237,7 +237,15 @@ func (e Evaluation) Map() [4]float64 {
 }
 
 func (e Evaluation) Score() int {
-	return int(math.Round(e.Matching + e.Dispatch + e.Pickup + e.Drive))
+	total := int(math.Round(e.Matching + e.Dispatch + e.Pickup + e.Drive))
+	if total <= 0 {
+		total = 1
+	}
+	return total
+}
+
+func f1_x2(upper float64, lower float64) float64 {
+	return (upper / lower) * (upper / lower)
 }
 
 type RequestStatuses struct {
