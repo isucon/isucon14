@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -131,34 +132,46 @@ func (r *Request) CalculateEvaluation() Evaluation {
 	result := Evaluation{}
 	{
 		// マッチング待ち時間評価
-		if r.MatchedAt-r.RequestedAt < 100 {
-			// 100ticks以内ならOK
-			result.Matching = true
+		diff := r.MatchedAt - r.RequestedAt
+		if diff < 100 {
+			// 100ticks以内なら満点
+			result.Matching = 1
+		} else {
+			result.Matching = float64(100*100) / float64(diff*diff)
 		}
 	}
 	{
 		// 乗車待ち時間評価
-		if r.StartPoint.V.DistanceTo(r.PickupPoint) < 25 {
-			// 割り当てられた椅子が自分の場所から距離25以内
-			result.Dispatch = true
+		distance := r.StartPoint.V.DistanceTo(r.PickupPoint)
+		if distance < 25 {
+			// 割り当てられた椅子が自分の場所から距離25以内なら満点
+			result.Dispatch = 1
+		} else {
+			result.Dispatch = float64(25*25) / float64(distance*distance)
 		}
 	}
 	{
 		// 乗車待ち時間誤差評価
 		idealTime := neededTime(r.StartPoint.V.DistanceTo(r.PickupPoint), r.Chair.Model.Speed)
 		actualTime := int(r.PickedUpAt - r.MatchedAt)
-		if actualTime-idealTime < 15 {
-			// 理想時間との誤差が15ticks以内ならOK
-			result.Pickup = true
+		diff := actualTime - idealTime
+		if diff < 15 {
+			// 理想時間との誤差が15ticks以内なら満点
+			result.Pickup = 1
+		} else {
+			result.Pickup = float64(15*15) / float64(diff*diff)
 		}
 	}
 	{
 		// 乗車時間誤差評価
 		idealTime := neededTime(r.PickupPoint.DistanceTo(r.DestinationPoint), r.Chair.Model.Speed)
 		actualTime := int(r.ArrivedAt - r.PickedUpAt)
-		if actualTime-idealTime < 5 {
-			// 理想時間との誤差が5ticks以内ならOK
-			result.Drive = true
+		diff := actualTime - idealTime
+		if diff < 5 {
+			// 理想時間との誤差が5ticks以内なら満点
+			result.Drive = 1
+		} else {
+			result.Drive = float64(5*5) / float64(diff*diff)
 		}
 	}
 
@@ -209,35 +222,22 @@ func (r *Request) PartialScore() int {
 }
 
 type Evaluation struct {
-	Matching bool
-	Dispatch bool
-	Pickup   bool
-	Drive    bool
+	Matching float64
+	Dispatch float64
+	Pickup   float64
+	Drive    float64
 }
 
 func (e Evaluation) String() string {
 	return fmt.Sprintf("score: %d (matching:%v, dispath:%v, pickup:%v, drive:%v)", e.Score(), e.Matching, e.Dispatch, e.Pickup, e.Drive)
 }
 
-func (e Evaluation) Map() [4]bool {
-	return [4]bool{e.Matching, e.Dispatch, e.Pickup, e.Drive}
+func (e Evaluation) Map() [4]float64 {
+	return [4]float64{e.Matching, e.Dispatch, e.Pickup, e.Drive}
 }
 
 func (e Evaluation) Score() int {
-	result := 1
-	if e.Matching {
-		result++
-	}
-	if e.Dispatch {
-		result++
-	}
-	if e.Pickup {
-		result++
-	}
-	if e.Drive {
-		result++
-	}
-	return result
+	return int(math.Round(e.Matching + e.Dispatch + e.Pickup + e.Drive))
 }
 
 type RequestStatuses struct {

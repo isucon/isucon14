@@ -51,7 +51,7 @@ type Scenario struct {
 	prepareOnly               bool
 	skipStaticFileSanityCheck bool
 	finalScore                null.Int64
-	evaluationMap             [4]int
+	evaluationMap             [4]float64
 	evalScoreMap              [5]int
 	completedRequests         int
 	evaluationMapLock         sync.RWMutex
@@ -155,17 +155,15 @@ func NewScenario(target, addr, paymentURL string, logger *slog.Logger, reporter 
 		for req := range completedRequestChan {
 			eval := req.CalculateEvaluation()
 			intervals := req.Intervals()
-			requestsRecorder.Add(context.Background(), 1, metric.WithAttributes(attribute.Int("score", eval.Score()), attribute.Bool("matching", eval.Matching), attribute.Bool("dispatch", eval.Dispatch), attribute.Bool("pickup", eval.Pickup), attribute.Bool("drive", eval.Drive)))
+			requestsRecorder.Add(context.Background(), 1, metric.WithAttributes(attribute.Int("score", eval.Score()), attribute.Float64("matching", eval.Matching), attribute.Float64("dispatch", eval.Dispatch), attribute.Float64("pickup", eval.Pickup), attribute.Float64("drive", eval.Drive)))
 			matchingLatency.Record(context.Background(), intervals[0])
 			dispatchingLatency.Record(context.Background(), intervals[1])
 			carryingLatency.Record(context.Background(), intervals[2])
 			s.evaluationMapLock.Lock()
 			s.completedRequests++
 			s.evalScoreMap[eval.Score()-1]++
-			for i, ok := range eval.Map() {
-				if ok {
-					s.evaluationMap[i]++
-				}
+			for i, value := range eval.Map() {
+				s.evaluationMap[i] += value
 			}
 			s.evaluationMapLock.Unlock()
 		}
