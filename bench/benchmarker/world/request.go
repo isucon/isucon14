@@ -237,7 +237,7 @@ func (e Evaluation) Map() [4]float64 {
 }
 
 func (e Evaluation) Score() int {
-	total := int(math.Round(e.Matching + e.Dispatch + e.Pickup + e.Drive))
+	total := int(math.Round((e.Matching*4 - 3) + e.Dispatch + e.Pickup + e.Drive))
 	if total <= 0 {
 		total = 1
 	}
