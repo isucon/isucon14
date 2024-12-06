@@ -21,7 +21,7 @@ const (
 
 type invalidPayment struct {
 	Payment *payment.Payment
-	Request *Request
+	Request *Ride
 	Reason  invalidPaymentReason
 }
 
@@ -30,7 +30,7 @@ type PaymentDB struct {
 	CommittedPayments *concurrent.SimpleSlice[*payment.Payment]
 	// TODO: このフィールドに入れるんじゃなくてdeductionとかにまとめる
 	invalidPayments    *concurrent.SimpleSlice[*invalidPayment]
-	alreadyPaidRequest *concurrent.SimpleMap[*Request, struct{}]
+	alreadyPaidRequest *concurrent.SimpleMap[*Ride, struct{}]
 }
 
 func NewPaymentDB() *PaymentDB {
@@ -38,7 +38,7 @@ func NewPaymentDB() *PaymentDB {
 		PaymentTokens:      concurrent.NewSimpleMap[string, *User](),
 		CommittedPayments:  concurrent.NewSimpleSlice[*payment.Payment](),
 		invalidPayments:    concurrent.NewSimpleSlice[*invalidPayment](),
-		alreadyPaidRequest: concurrent.NewSimpleMap[*Request, struct{}](),
+		alreadyPaidRequest: concurrent.NewSimpleMap[*Ride, struct{}](),
 	}
 }
 
@@ -54,7 +54,7 @@ func (db *PaymentDB) Verify(p *payment.Payment) payment.Status {
 	// 支払いがリクエストに対して valid かどうかを確認するが、
 	// Payment Server 自体はリクエストに対して valid かどうかに関わらず決済を行う
 	// このため、invalid だった場合も status には反映しないが invalidPayments に記録する
-	req := user.Request
+	req := user.Ride
 	if req == nil {
 		db.invalidPayments.Append(&invalidPayment{Payment: p, Reason: invalidPaymentReasonNoRequest})
 		// TODO: ロギング

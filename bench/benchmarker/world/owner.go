@@ -31,7 +31,7 @@ type Owner struct {
 	// SubScore このオーナーが管理している椅子によって獲得したベンチマークスコアの合計
 	SubScore atomic.Int64
 	// CompletedRequest 管理している椅子が完了したリクエスト
-	CompletedRequest *concurrent.SimpleSlice[*Request]
+	CompletedRequest *concurrent.SimpleSlice[*Ride]
 	// ChairModels このオーナーが取り扱っているモデル
 	ChairModels map[int]ChairModels
 
@@ -55,63 +55,63 @@ type RegisteredOwnerData struct {
 	ChairRegisterToken string
 }
 
-func (p *Owner) String() string {
-	return fmt.Sprintf("Owner{id=%d}", p.ID)
+func (o *Owner) String() string {
+	return fmt.Sprintf("Owner{id=%d}", o.ID)
 }
 
-func (p *Owner) SetID(id OwnerID) {
-	p.ID = id
+func (o *Owner) SetID(id OwnerID) {
+	o.ID = id
 }
 
-func (p *Owner) GetServerID() string {
-	return p.ServerID
+func (o *Owner) GetServerID() string {
+	return o.ServerID
 }
 
-func (p *Owner) Tick(ctx *Context) error {
-	if p.tickDone.DoOrSkip() {
+func (o *Owner) Tick(ctx *Context) error {
+	if o.tickDone.DoOrSkip() {
 		return nil
 	}
-	defer p.tickDone.Done()
+	defer o.tickDone.Done()
 
 	if ctx.CurrentTime()%LengthOfHour == LengthOfHour/2 {
-		err := p.Client.BrowserAccess(ctx, benchrun.FRONTEND_PATH_SCENARIO_OWNER_CHAIRS)
+		err := o.Client.BrowserAccess(ctx, benchrun.FRONTEND_PATH_SCENARIO_OWNER_CHAIRS)
 		if err != nil {
 			return WrapCodeError(ErrorCodeFailedToGetOwnerChairs, err)
 		}
 
-		res, err := p.Client.GetOwnerChairs(ctx, &GetOwnerChairsRequest{})
+		res, err := o.Client.GetOwnerChairs(ctx, &GetOwnerChairsRequest{})
 		if err != nil {
 			return WrapCodeError(ErrorCodeFailedToGetOwnerChairs, err)
 		}
-		if err := p.ValidateChairs(res); err != nil {
+		if err := o.ValidateChairs(res); err != nil {
 			return WrapCodeError(ErrorCodeIncorrectOwnerChairsData, err)
 		}
 	} else if ctx.CurrentTime()%LengthOfHour == LengthOfHour-1 {
-		last := lo.MaxBy(p.CompletedRequest.ToSlice(), func(a *Request, b *Request) bool { return a.ServerCompletedAt.After(b.ServerCompletedAt) })
+		last := lo.MaxBy(o.CompletedRequest.ToSlice(), func(a *Ride, b *Ride) bool { return a.ServerCompletedAt.After(b.ServerCompletedAt) })
 		if last != nil {
-			err := p.Client.BrowserAccess(ctx, benchrun.FRONTEND_PATH_SCENARIO_OWNER_SALES)
+			err := o.Client.BrowserAccess(ctx, benchrun.FRONTEND_PATH_SCENARIO_OWNER_SALES)
 			if err != nil {
 				return WrapCodeError(ErrorCodeFailedToGetOwnerChairs, err)
 			}
 
-			res, err := p.Client.GetOwnerSales(ctx, &GetOwnerSalesRequest{
+			res, err := o.Client.GetOwnerSales(ctx, &GetOwnerSalesRequest{
 				Until: last.ServerCompletedAt,
 			})
 			if err != nil {
 				return WrapCodeError(ErrorCodeFailedToGetOwnerSales, err)
 			}
-			if err := p.ValidateSales(last.ServerCompletedAt, res); err != nil {
+			if err := o.ValidateSales(last.ServerCompletedAt, res); err != nil {
 				return WrapCodeError(ErrorCodeSalesMismatched, err)
 			}
-			if increase := desiredChairNum(res.Total) - p.createChairTryCount; increase > 0 {
-				ctx.ContestantLogger().Info("一定の売上が立ったためオーナーの椅子が増加します", slog.Int("id", int(p.ID)), slog.Int("increase", increase))
+			if increase := desiredChairNum(res.Total) - o.createChairTryCount; increase > 0 {
+				ctx.ContestantLogger().Info("一定の売上が立ったためオーナーの椅子が増加します", slog.Int("id", int(o.ID)), slog.Int("increase", increase))
 				for range increase {
-					p.createChairTryCount++
+					o.createChairTryCount++
 					// TODO どのモデルを増やすか
-					models := p.ChairModels[modelSpeeds[(p.createChairTryCount-1)%len(modelSpeeds)]]
-					_, err := p.World.CreateChair(ctx, &CreateChairArgs{
-						Owner:             p,
-						InitialCoordinate: RandomCoordinateOnRegionWithRand(p.Region, p.Rand),
+					models := o.ChairModels[modelSpeeds[(o.createChairTryCount-1)%len(modelSpeeds)]]
+					_, err := o.World.CreateChair(ctx, &CreateChairArgs{
+						Owner:             o,
+						InitialCoordinate: RandomCoordinateOnRegionWithRand(o.Region, o.Rand),
 						Model:             models.Random(),
 					})
 					if err != nil {
@@ -125,24 +125,24 @@ func (p *Owner) Tick(ctx *Context) error {
 	return nil
 }
 
-func (p *Owner) AddChair(c *Chair) {
-	p.ChairDB.Set(c.ID, c)
-	p.chairCountPerModel[c.Model]++
+func (o *Owner) AddChair(c *Chair) {
+	o.ChairDB.Set(c.ID, c)
+	o.chairCountPerModel[c.Model]++
 }
 
-func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse) error {
+func (o *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse) error {
 	totals := 0
-	perChairs := lo.Associate(p.ChairDB.ToSlice(), func(c *Chair) (string, *ChairSales) {
+	perChairs := lo.Associate(o.ChairDB.ToSlice(), func(c *Chair) (string, *ChairSales) {
 		return c.ServerID, &ChairSales{
 			ID:    c.ServerID,
 			Name:  c.RegisteredData.Name,
 			Sales: 0,
 		}
 	})
-	perModels := lo.MapEntries(p.chairCountPerModel, func(m *ChairModel, _ int) (string, *ChairSalesPerModel) {
+	perModels := lo.MapEntries(o.chairCountPerModel, func(m *ChairModel, _ int) (string, *ChairSalesPerModel) {
 		return m.Name, &ChairSalesPerModel{Model: m.Name}
 	})
-	for _, r := range p.CompletedRequest.Iter() {
+	for _, r := range o.CompletedRequest.Iter() {
 		if r.ServerCompletedAt.After(until) {
 			continue
 		}
@@ -163,7 +163,7 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 	}
 
 	// 椅子毎の売り上げ検証
-	if p.ChairDB.Len() != len(serverSide.Chairs) {
+	if o.ChairDB.Len() != len(serverSide.Chairs) {
 		return fmt.Errorf("椅子ごとの売り上げ情報が足りていません")
 	}
 	for _, chair := range serverSide.Chairs {
@@ -201,12 +201,12 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 	return nil
 }
 
-func (p *Owner) ValidateChairs(serverSide *GetOwnerChairsResponse) error {
-	if p.ChairDB.Len() != len(serverSide.Chairs) {
+func (o *Owner) ValidateChairs(serverSide *GetOwnerChairsResponse) error {
+	if o.ChairDB.Len() != len(serverSide.Chairs) {
 		return fmt.Errorf("オーナーの椅子の数が一致していません")
 	}
 	mapped := lo.Associate(serverSide.Chairs, func(c *OwnerChair) (string, *OwnerChair) { return c.ID, c })
-	for _, chair := range p.ChairDB.Iter() {
+	for _, chair := range o.ChairDB.Iter() {
 		data, ok := mapped[chair.ServerID]
 		if !ok {
 			return fmt.Errorf("椅子一覧レスポンスに含まれていない椅子があります (id: %s)", chair.ServerID)

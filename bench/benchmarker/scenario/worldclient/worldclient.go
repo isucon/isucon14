@@ -207,7 +207,7 @@ func (c *chairClient) SendChairCoordinate(ctx *world.Context, chair *world.Chair
 	return &world.SendChairCoordinateResponse{RecordedAt: time.UnixMilli(response.RecordedAt)}, nil
 }
 
-func (c *chairClient) SendAcceptRequest(ctx *world.Context, chair *world.Chair, req *world.Request) error {
+func (c *chairClient) SendAcceptRequest(ctx *world.Context, chair *world.Chair, req *world.Ride) error {
 	_, err := c.client.ChairPostRideStatus(c.ctx, req.ServerID, &api.ChairPostRideStatusReq{
 		Status: api.ChairPostRideStatusReqStatusENROUTE,
 	})
@@ -218,7 +218,7 @@ func (c *chairClient) SendAcceptRequest(ctx *world.Context, chair *world.Chair, 
 	return nil
 }
 
-func (c *chairClient) SendDepart(ctx *world.Context, req *world.Request) error {
+func (c *chairClient) SendDepart(ctx *world.Context, req *world.Ride) error {
 	_, err := c.client.ChairPostRideStatus(c.ctx, req.ServerID, &api.ChairPostRideStatusReq{
 		Status: api.ChairPostRideStatusReqStatusCARRYING,
 	})
@@ -255,16 +255,19 @@ func (c *chairClient) ConnectChairNotificationStream(ctx *world.Context, chair *
 			if r.Data.Valid {
 				data := r.Data.V
 				var event world.NotificationEvent
+				chairNotificationEvent := world.ChairNotificationEvent{
+					User: world.ChairNotificationEventUserPayload{
+						ID:   data.User.ID,
+						Name: data.User.Name,
+					},
+					Pickup:      world.C(data.PickupCoordinate.Latitude, data.PickupCoordinate.Longitude),
+					Destination: world.C(data.DestinationCoordinate.Latitude, data.DestinationCoordinate.Longitude),
+				}
 				switch data.Status {
 				case api.RideStatusMATCHING:
-					event = &world.ChairNotificationEventMatched{
-						ServerRequestID: data.RideID,
-						User: world.ChairNotificationEventUserPayload{
-							ID:   data.User.ID,
-							Name: data.User.Name,
-						},
-						Pickup:      world.C(data.PickupCoordinate.Latitude, data.PickupCoordinate.Longitude),
-						Destination: world.C(data.DestinationCoordinate.Latitude, data.DestinationCoordinate.Longitude),
+					event = &world.ChairNotificationEventMatching{
+						ServerRideID:           data.RideID,
+						ChairNotificationEvent: chairNotificationEvent,
 					}
 				case api.RideStatusENROUTE:
 					// event = &world.ChairNotificationEventDispatching{}
@@ -276,7 +279,8 @@ func (c *chairClient) ConnectChairNotificationStream(ctx *world.Context, chair *
 					// event = &world.ChairNotificationEventArrived{}
 				case api.RideStatusCOMPLETED:
 					event = &world.ChairNotificationEventCompleted{
-						ServerRequestID: data.RideID,
+						ServerRideID:           data.RideID,
+						ChairNotificationEvent: chairNotificationEvent,
 					}
 				}
 				if event == nil {
@@ -297,7 +301,7 @@ func (c *userClient) getInternalClient() *webapp.Client {
 	return c.client
 }
 
-func (c *userClient) SendEvaluation(ctx *world.Context, req *world.Request, score int) (*world.SendEvaluationResponse, error) {
+func (c *userClient) SendEvaluation(ctx *world.Context, req *world.Ride, score int) (*world.SendEvaluationResponse, error) {
 	res, err := c.client.AppPostRequestEvaluate(c.ctx, req.ServerID, &api.AppPostRideEvaluationReq{
 		Evaluation: score,
 	})
@@ -310,7 +314,7 @@ func (c *userClient) SendEvaluation(ctx *world.Context, req *world.Request, scor
 	}, nil
 }
 
-func (c *userClient) SendCreateRequest(ctx *world.Context, req *world.Request) (*world.SendCreateRequestResponse, error) {
+func (c *userClient) SendCreateRequest(ctx *world.Context, req *world.Ride) (*world.SendCreateRequestResponse, error) {
 	pickup := req.PickupPoint
 	destination := req.DestinationPoint
 	response, err := c.client.AppPostRequest(c.ctx, &api.AppPostRidesReq{
@@ -431,28 +435,53 @@ func (c *userClient) ConnectUserNotificationStream(ctx *world.Context, user *wor
 			if r.Data.Valid {
 				data := r.Data.V
 				var event world.NotificationEvent
+				userNotificationEvent := world.UserNotificationEvent{
+					Pickup:      world.C(data.PickupCoordinate.Latitude, data.PickupCoordinate.Longitude),
+					Destination: world.C(data.DestinationCoordinate.Latitude, data.DestinationCoordinate.Longitude),
+					Fare:        data.Fare,
+					Chair:       nil,
+				}
+				if data.Chair.Set {
+					userNotificationEvent.Chair = &world.UserNotificationEventChairPayload{
+						ID:    data.Chair.Value.ID,
+						Name:  data.Chair.Value.Name,
+						Model: data.Chair.Value.Model,
+						Stats: world.UserNotificationEventChairStatsPayload{
+							TotalRidesCount:    data.Chair.Value.Stats.TotalRidesCount,
+							TotalEvaluationAvg: data.Chair.Value.Stats.TotalEvaluationAvg,
+						},
+					}
+				}
 				switch data.Status {
 				case api.RideStatusMATCHING:
-					// event = &world.UserNotificationEventMatching{}
+					event = &world.UserNotificationEventMatching{
+						ServerRideID:          data.RideID,
+						UserNotificationEvent: userNotificationEvent,
+					}
 				case api.RideStatusENROUTE:
-					event = &world.UserNotificationEventDispatching{
-						ServerRequestID: data.RideID,
+					event = &world.UserNotificationEventEnRoute{
+						ServerRideID:          data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				case api.RideStatusPICKUP:
-					event = &world.UserNotificationEventDispatched{
-						ServerRequestID: data.RideID,
+					event = &world.UserNotificationEventPickup{
+						ServerRideID:          data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				case api.RideStatusCARRYING:
 					event = &world.UserNotificationEventCarrying{
-						ServerRequestID: data.RideID,
+						ServerRideID:          data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				case api.RideStatusARRIVED:
 					event = &world.UserNotificationEventArrived{
-						ServerRequestID: data.RideID,
+						ServerRideID:          data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				case api.RideStatusCOMPLETED:
 					event = &world.UserNotificationEventCompleted{
-						ServerRequestID: data.RideID,
+						ServerRideID:          data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				}
 				if event == nil {

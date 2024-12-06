@@ -4,6 +4,9 @@ tasks:
   run-local:
     cmds:
       - go run . run --target http://localhost:8080 -t 60 {{.CLI_ARGS}}
+  run-local:skip-static:
+    cmds:
+      - go run . run --target http://localhost:8080 -t 60 -s
   build:
     cmds:
       - go build -ldflags "-s -w"

@@ -6,35 +6,35 @@ import (
 	"sync"
 )
 
-type RequestDB struct {
+type RideDB struct {
 	counter int
-	m       map[RequestID]*Request
+	m       map[RideID]*Ride
 	lock    sync.RWMutex
 }
 
-func NewRequestDB() *RequestDB {
-	return &RequestDB{
-		m: make(map[RequestID]*Request),
+func NewRideDB() *RideDB {
+	return &RideDB{
+		m: make(map[RideID]*Ride),
 	}
 }
 
-func (db *RequestDB) Create(req *Request) *Request {
+func (db *RideDB) Create(req *Ride) *Ride {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
 	db.counter++
-	req.ID = RequestID(db.counter)
+	req.ID = RideID(db.counter)
 	db.m[req.ID] = req
 	return req
 }
 
-func (db *RequestDB) Get(id RequestID) *Request {
+func (db *RideDB) Get(id RideID) *Ride {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 	return db.m[id]
 }
 
-func (db *RequestDB) GetByServerID(serverID string) *Request {
+func (db *RideDB) GetByServerID(serverID string) *Ride {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
@@ -47,8 +47,8 @@ func (db *RequestDB) GetByServerID(serverID string) *Request {
 	return nil
 }
 
-func (db *RequestDB) Iter() iter.Seq2[RequestID, *Request] {
-	return func(yield func(RequestID, *Request) bool) {
+func (db *RideDB) Iter() iter.Seq2[RideID, *Ride] {
+	return func(yield func(RideID, *Ride) bool) {
 		db.lock.RLock()
 		defer db.lock.RUnlock()
 		for id, req := range db.m {
@@ -59,14 +59,14 @@ func (db *RequestDB) Iter() iter.Seq2[RequestID, *Request] {
 	}
 }
 
-func (db *RequestDB) Size() int {
+func (db *RideDB) Size() int {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 	return len(db.m)
 }
 
-func (db *RequestDB) Values() iter.Seq[*Request] {
-	return func(yield func(*Request) bool) {
+func (db *RideDB) Values() iter.Seq[*Ride] {
+	return func(yield func(*Ride) bool) {
 		db.lock.RLock()
 		defer db.lock.RUnlock()
 		for _, v := range db.m {
@@ -77,7 +77,7 @@ func (db *RequestDB) Values() iter.Seq[*Request] {
 	}
 }
 
-func (db *RequestDB) ToSlice() []*Request {
+func (db *RideDB) ToSlice() []*Ride {
 	return slices.Collect(db.Values())
 }
 

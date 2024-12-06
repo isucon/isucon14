@@ -35,15 +35,15 @@ type User struct {
 	Region *Region
 	// State ユーザーの状態
 	State UserState
-	// Request 進行中の配椅子・送迎リクエスト
-	Request *Request
+	// Ride 進行中のライド
+	Ride *Ride
 	// RegisteredData サーバーに登録されているユーザー情報
 	RegisteredData RegisteredUserData
 	// PaymentToken 支払いトークン
 	PaymentToken string
-	// RequestHistory リクエスト履歴
-	RequestHistory []*Request
-	// TotalEvaluation 完了したリクエストの平均評価
+	// RideHistory ライド履歴
+	RideHistory []*Ride
+	// TotalEvaluation 完了したライドの平均評価
 	TotalEvaluation int
 	// Client webappへのクライアント
 	Client UserClient
@@ -63,6 +63,8 @@ type User struct {
 	notificationConn NotificationStream
 	// notificationQueue 通知キュー。毎Tickで最初に処理される
 	notificationQueue chan NotificationEvent
+	// validatedRideNotificationEvent 最新のバリデーション済みの通知イベント情報
+	validatedRideNotificationEvent *UserNotificationEvent
 }
 
 type RegisteredUserData struct {
@@ -74,10 +76,10 @@ type RegisteredUserData struct {
 }
 
 func (u *User) String() string {
-	if u.Request != nil {
-		return fmt.Sprintf("User{id=%d,totalReqs=%d,reqId=%d}", u.ID, len(u.RequestHistory), u.Request.ID)
+	if u.Ride != nil {
+		return fmt.Sprintf("User{id=%d,totalReqs=%d,reqId=%d}", u.ID, len(u.RideHistory), u.Ride.ID)
 	}
-	return fmt.Sprintf("User{id=%d,totalReqs=%d}", u.ID, len(u.RequestHistory))
+	return fmt.Sprintf("User{id=%d,totalReqs=%d}", u.ID, len(u.RideHistory))
 }
 
 func (u *User) SetID(id UserID) {
@@ -119,8 +121,8 @@ func (u *User) Tick(ctx *Context) error {
 		// 成功したのでアクティブ状態にする
 		u.State = UserStateActive
 
-	// 進行中のリクエストが存在
-	case u.Request != nil:
+	// 進行中のライドが存在
+	case u.Ride != nil:
 		if u.notificationConn == nil {
 			// 通知コネクションが無い場合は繋いでおく
 			conn, err := u.Client.ConnectUserNotificationStream(ctx, u, func(event NotificationEvent) {
@@ -135,66 +137,66 @@ func (u *User) Tick(ctx *Context) error {
 			u.notificationConn = conn
 		}
 
-		switch u.Request.Statuses.User {
-		case RequestStatusMatching:
+		switch u.Ride.Statuses.User {
+		case RideStatusMatching:
 			// マッチングされるまで待機する
 			// 一向にマッチングされない場合は、このユーザーの行動はハングする
 			break
 
-		case RequestStatusDispatching:
+		case RideStatusEnRoute:
 			// 椅子が到着するまで待つ
 			// 一向に到着しない場合は、このユーザーの行動はハングする
 			break
 
-		case RequestStatusDispatched:
+		case RideStatusPickup:
 			// 椅子が出発するのを待つ
 			// 一向に到着しない場合は、このユーザーの行動はハングする
 			break
 
-		case RequestStatusCarrying:
+		case RideStatusCarrying:
 			// 椅子が到着するのを待つ
 			// 一向に到着しない場合は、このユーザーの行動はハングする
 			break
 
-		case RequestStatusArrived:
+		case RideStatusArrived:
 			// 送迎の評価及び支払いがまだの場合は行う
-			if !u.Request.Evaluated.Load() {
-				score := u.Request.CalculateEvaluation().Score()
+			if !u.Ride.Evaluated.Load() {
+				score := u.Ride.CalculateEvaluation().Score()
 
 				err := u.Client.BrowserAccess(ctx, benchrun.FRONTEND_PATH_SCENARIO_CLIENT_EVALUATION)
 				if err != nil {
 					return WrapCodeError(ErrorCodeFailedToEvaluate, err)
 				}
 
-				u.Request.Statuses.Lock()
-				res, err := u.Client.SendEvaluation(ctx, u.Request, score)
+				u.Ride.Statuses.Lock()
+				res, err := u.Client.SendEvaluation(ctx, u.Ride, score)
 				if err != nil {
-					u.Request.Statuses.Unlock()
+					u.Ride.Statuses.Unlock()
 					return WrapCodeError(ErrorCodeFailedToEvaluate, err)
 				}
 
 				// サーバーが評価を受理したので完了状態になるのを待機する
-				u.Request.CompletedAt = ctx.CurrentTime()
-				u.Request.ServerCompletedAt = res.CompletedAt
-				u.Request.Statuses.Desired = RequestStatusCompleted
-				u.Request.Evaluated.Store(true)
-				if requests := len(u.RequestHistory); requests == 1 {
+				u.Ride.CompletedAt = ctx.CurrentTime()
+				u.Ride.ServerCompletedAt = res.CompletedAt
+				u.Ride.Statuses.Desired = RideStatusCompleted
+				u.Ride.Evaluated.Store(true)
+				if requests := len(u.RideHistory); requests == 1 {
 					u.Region.TotalEvaluation.Add(int32(score))
 				} else {
 					u.Region.TotalEvaluation.Add(int32((u.TotalEvaluation+score)/requests - u.TotalEvaluation/(requests-1)))
 				}
 				u.TotalEvaluation += score
-				u.Request.Chair.Owner.CompletedRequest.Append(u.Request)
-				u.Request.Chair.Owner.TotalSales.Add(int64(u.Request.Sales()))
-				u.Request.Chair.Owner.SubScore.Add(int64(u.Request.Score()))
-				u.World.PublishEvent(&EventRequestCompleted{Request: u.Request})
+				u.Ride.Chair.Owner.CompletedRequest.Append(u.Ride)
+				u.Ride.Chair.Owner.TotalSales.Add(int64(u.Ride.Sales()))
+				u.Ride.Chair.Owner.SubScore.Add(int64(u.Ride.Score()))
+				u.World.PublishEvent(&EventRequestCompleted{Request: u.Ride})
 
-				u.Request.Statuses.Unlock()
+				u.Ride.Statuses.Unlock()
 			}
 
-		case RequestStatusCompleted:
-			// 進行中のリクエストが無い状態にする
-			u.Request = nil
+		case RideStatusCompleted:
+			// 進行中のライドが無い状態にする
+			u.Ride = nil
 
 			// 通知コネクションを切る
 			if u.notificationConn != nil {
@@ -203,9 +205,9 @@ func (u *User) Tick(ctx *Context) error {
 			}
 		}
 
-	// 進行中のリクエストは存在しないが、ユーザーがアクティブ状態
-	case u.Request == nil && u.State == UserStateActive:
-		if count := len(u.RequestHistory); (count == 1 && u.TotalEvaluation <= 1) || float64(u.TotalEvaluation)/float64(count) <= 2 {
+	// 進行中のライドは存在しないが、ユーザーがアクティブ状態
+	case u.Ride == nil && u.State == UserStateActive:
+		if count := len(u.RideHistory); (count == 1 && u.TotalEvaluation <= 1) || float64(u.TotalEvaluation)/float64(count) <= 2 {
 			// 初回利用で評価1なら離脱
 			// 2回以上利用して平均評価が2以下の場合は離脱
 			if u.Region.UserLeave(u) {
@@ -214,15 +216,15 @@ func (u *User) Tick(ctx *Context) error {
 			// Region内の最低ユーザー数を下回るならそのまま残る
 		}
 
-		// 過去のリクエストを確認する
+		// 過去のライドを確認する
 		err := u.CheckRequestHistory(ctx)
 		if err != nil {
 			return WrapCodeError(ErrorCodeFailedToCheckRequestHistory, err)
 		}
 
-		// リクエストを作成する
+		// ライドを作成する
 		// TODO 作成する条件・頻度
-		err = u.CreateRequest(ctx)
+		err = u.CreateRide(ctx)
 		if err != nil {
 			return err
 		}
@@ -257,11 +259,11 @@ func (u *User) CheckRequestHistory(ctx *Context) error {
 	if err != nil {
 		return err
 	}
-	if len(res.Requests) != len(u.RequestHistory) {
-		return fmt.Errorf("ライドの数が想定数と一致していません: expected=%d, got=%d", len(u.RequestHistory), len(res.Requests))
+	if len(res.Requests) != len(u.RideHistory) {
+		return fmt.Errorf("ライドの数が想定数と一致していません: expected=%d, got=%d", len(u.RideHistory), len(res.Requests))
 	}
 
-	historyMap := lo.KeyBy(u.RequestHistory, func(r *Request) string { return r.ServerID })
+	historyMap := lo.KeyBy(u.RideHistory, func(r *Ride) string { return r.ServerID })
 	for _, req := range res.Requests {
 		expected, ok := historyMap[req.ID]
 		if !ok {
@@ -287,9 +289,9 @@ func (u *User) CheckRequestHistory(ctx *Context) error {
 	return nil
 }
 
-func (u *User) CreateRequest(ctx *Context) error {
-	if u.Request != nil {
-		panic("ユーザーに進行中のリクエストがあるのにも関わらず、リクエストを新規作成しようとしている")
+func (u *User) CreateRide(ctx *Context) error {
+	if u.Ride != nil {
+		panic("ユーザーに進行中のライドがあるのにも関わらず、ライドを新規作成しようとしている")
 	}
 
 	u.InvitingLock.Lock()
@@ -297,31 +299,31 @@ func (u *User) CreateRequest(ctx *Context) error {
 
 	pickup, dest := RandomTwoCoordinateWithRand(u.Region, u.Rand.IntN(100)+5, u.Rand)
 
-	req := &Request{
+	ride := &Ride{
 		User:             u,
 		PickupPoint:      pickup,
 		DestinationPoint: dest,
 		RequestedAt:      ctx.CurrentTime(),
-		Statuses: RequestStatuses{
-			Desired: RequestStatusMatching,
-			Chair:   RequestStatusMatching,
-			User:    RequestStatusMatching,
+		Statuses: RideStatuses{
+			Desired: RideStatusMatching,
+			Chair:   RideStatusMatching,
+			User:    RideStatusMatching,
 		},
 	}
 
 	useInvCoupon := false
 	switch {
 	// 初回利用の割引を適用
-	case len(u.RequestHistory) == 0:
-		req.Discount = 3000
+	case len(u.RideHistory) == 0:
+		ride.Discount = 3000
 
 	// 招待された側のクーポンを適用
-	case len(u.RequestHistory) == 1 && u.Invited:
-		req.Discount = 1500
+	case len(u.RideHistory) == 1 && u.Invited:
+		ride.Discount = 1500
 
 	// 招待した側のクーポンを適用
 	case u.UnusedInvCoupons > 0:
-		req.Discount = 1000
+		ride.Discount = 1000
 		useInvCoupon = true
 	}
 
@@ -329,10 +331,10 @@ func (u *User) CreateRequest(ctx *Context) error {
 	now := time.Now()
 	nearby, err := u.Client.GetNearbyChairs(ctx, pickup, checkDistance)
 	if err != nil {
-		return WrapCodeError(ErrorCodeWrongNearbyChairs, err)
+		return WrapCodeError(ErrorCodeIncorrectNearbyChairs, err)
 	}
 	if err := u.World.checkNearbyChairsResponse(now, pickup, checkDistance, nearby); err != nil {
-		return WrapCodeError(ErrorCodeWrongNearbyChairs, err)
+		return WrapCodeError(ErrorCodeIncorrectNearbyChairs, err)
 	}
 	if len(nearby.Chairs) == 0 {
 		// 近くに椅子が無いので配車をやめる
@@ -343,92 +345,246 @@ func (u *User) CreateRequest(ctx *Context) error {
 	if err != nil {
 		return WrapCodeError(ErrorCodeFailedToCreateRequest, err)
 	}
-	if req.ActualDiscount() != estimation.Discount || req.Fare() != estimation.Fare {
+	if ride.ActualDiscount() != estimation.Discount || ride.Fare() != estimation.Fare {
 		return WrapCodeError(ErrorCodeFailedToCreateRequest, errors.New("ライド料金の見積もり金額が誤っています"))
 	}
 
-	res, err := u.Client.SendCreateRequest(ctx, req)
+	res, err := u.Client.SendCreateRequest(ctx, ride)
 	if err != nil {
 		return WrapCodeError(ErrorCodeFailedToCreateRequest, err)
 	}
-	req.ServerID = res.ServerRequestID
-	u.Request = req
-	u.RequestHistory = append(u.RequestHistory, req)
-	u.World.RequestDB.Create(req)
+	ride.ServerID = res.ServerRequestID
+	u.Ride = ride
+	u.RideHistory = append(u.RideHistory, ride)
+	u.World.RideDB.Create(ride)
 	if useInvCoupon {
 		u.UnusedInvCoupons--
 	}
 	return nil
 }
 
-func (u *User) ChangeRequestStatus(status RequestStatus, serverRequestID string) error {
-	request := u.Request
-	if request == nil {
-		if status == RequestStatusCompleted {
-			// 履歴を見て、過去扱っていたRequestに向けてのCOMPLETED通知であれば無視する
-			for _, r := range slices.Backward(u.RequestHistory) {
-				if r.ServerID == serverRequestID && r.Statuses.Desired == RequestStatusCompleted {
-					r.Statuses.User = RequestStatusCompleted
+func (u *User) ChangeRideStatus(status RideStatus, serverRequestID string, validator func() error) error {
+	ride := u.Ride
+	if ride == nil {
+		if status == RideStatusCompleted {
+			// 履歴を見て、過去扱っていたRideに向けてのCOMPLETED通知であれば無視する
+			for _, r := range slices.Backward(u.RideHistory) {
+				if r.ServerID == serverRequestID && r.Statuses.Desired == RideStatusCompleted {
+					r.Statuses.User = RideStatusCompleted
 					return nil
 				}
 			}
 		}
 		return WrapCodeError(ErrorCodeUserNotRequestingButStatusChanged, fmt.Errorf("user_id: %s, got: %v", u.ServerID, status))
 	}
-	request.Statuses.RLock()
-	defer request.Statuses.RUnlock()
-	if request.Statuses.User != status && request.Statuses.Desired != status {
+
+	u.Ride.Statuses.Lock()
+	defer u.Ride.Statuses.Unlock()
+	if u.Ride.Statuses.User != status && u.Ride.Statuses.Desired != status {
 		// 現在認識しているユーザーの状態で無いかつ、想定状態ではない状態に遷移しようとしている場合
-		if request.Statuses.User == RequestStatusMatching && request.Statuses.Desired == RequestStatusDispatched && status == RequestStatusDispatching {
-			// ユーザーにDispatchingが送られる前に、椅子が到着している場合があるが、その時にDispatchingを受け取ることを許容する
-		} else if request.Statuses.User == RequestStatusDispatched && request.Statuses.Desired == RequestStatusArrived && status == RequestStatusCarrying {
-			// もう到着しているが、ユーザー側の通知が遅延していて、DISPATCHED状態からまだCARRYINGに遷移してないときは、CARRYINGを許容する
-		} else if request.Statuses.Desired == RequestStatusDispatched && request.Statuses.User == RequestStatusDispatched && status == RequestStatusCarrying {
-			// ユーザーがDispatchedを受け取った状態で、椅子が出発リクエストを送った後、ベンチマーカーのDesiredステータスの変更を行う前にユーザー側にCarrying通知が届いてしまうことがあるがこれは許容する
-		} else if status == RequestStatusCompleted {
+		if ride.Statuses.User == RideStatusMatching && u.Ride.Statuses.Desired == RideStatusPickup && status == RideStatusEnRoute {
+			// ユーザーにENROUTEが送られる前に、椅子が配車位置に到着している場合があるが、その時にPICKUPを受け取ることを許容する
+		} else if u.Ride.Statuses.User == RideStatusPickup && u.Ride.Statuses.Desired == RideStatusArrived && status == RideStatusCarrying {
+			// もう到着しているが、ユーザー側の通知が遅延していて、PICKUP状態からまだCARRYINGに遷移してないときは、CARRYINGを許容する
+		} else if u.Ride.Statuses.Desired == RideStatusPickup && u.Ride.Statuses.User == RideStatusPickup && status == RideStatusCarrying {
+			// ユーザーがPICKUPを受け取った状態で、椅子が出発リクエストを送った後、ベンチマーカーのDesiredステータスの変更を行う前にユーザー側にCarrying通知が届いてしまうことがあるがこれは許容する
+		} else if status == RideStatusCompleted {
 			// 履歴を見て、過去扱っていたRequestに向けてのCOMPLETED通知であれば無視する
-			for _, r := range slices.Backward(u.RequestHistory) {
-				if r.ServerID == serverRequestID && r.Statuses.Desired == RequestStatusCompleted {
-					r.Statuses.User = RequestStatusCompleted
+			for _, r := range slices.Backward(u.RideHistory) {
+				if r.ServerID == serverRequestID && r.Statuses.Desired == RideStatusCompleted {
+					r.Statuses.User = RideStatusCompleted
 					return nil
 				}
 			}
-			return WrapCodeError(ErrorCodeUnexpectedUserRequestStatusTransitionOccurred, fmt.Errorf("ride_id: %v, expect: %v, got: %v (current: %v)", request.ServerID, request.Statuses.Desired, status, request.Statuses.User))
+			return WrapCodeError(ErrorCodeUnexpectedUserRequestStatusTransitionOccurred, fmt.Errorf("ride_id: %v, expect: %v, got: %v (current: %v)", ride.ServerID, ride.Statuses.Desired, status, ride.Statuses.User))
 		} else {
-			return WrapCodeError(ErrorCodeUnexpectedUserRequestStatusTransitionOccurred, fmt.Errorf("ride_id: %v, expect: %v, got: %v (current: %v)", request.ServerID, request.Statuses.Desired, status, request.Statuses.User))
+			return WrapCodeError(ErrorCodeUnexpectedUserRequestStatusTransitionOccurred, fmt.Errorf("ride_id: %v, expect: %v, got: %v (current: %v)", ride.ServerID, ride.Statuses.Desired, status, ride.Statuses.User))
 		}
 	}
-	request.Statuses.User = status
+
+	if err := validator(); err != nil {
+		return WrapCodeError(ErrorCodeIncorrectUserNotificationData, err)
+	}
+
+	u.Ride.Statuses.User = status
+
 	return nil
 }
 
+// HandleNotification 通知イベントを処理して、自身の状態を推移させる
 func (u *User) HandleNotification(event NotificationEvent) error {
 	switch data := event.(type) {
-	case *UserNotificationEventDispatching:
-		err := u.ChangeRequestStatus(RequestStatusDispatching, data.ServerRequestID)
+	case *UserNotificationEventMatching:
+		err := u.ChangeRideStatus(RideStatusMatching, data.ServerRideID, func() error {
+			if u.Ride.Statuses.User == RideStatusMatching && u.validatedRideNotificationEvent != nil {
+				// バリデーション済みの結果と比較する
+				return fmt.Errorf("ride_status (before: %s, after: %s) %w", u.Ride.Statuses.User, RideStatusMatching, compareUserNotificationEvent(data.ServerRideID, *u.validatedRideNotificationEvent, data.UserNotificationEvent))
+			} else {
+				if err := u.ValidateNotificationEvent(data.ServerRideID, data.UserNotificationEvent); err != nil {
+					return fmt.Errorf("ride_status (before: %s, after: %s) %w", u.Ride.Statuses.User, RideStatusMatching, err)
+				}
+				// 新規登録 or 前回の結果を上書き
+				u.validatedRideNotificationEvent = &data.UserNotificationEvent
+				return nil
+			}
+		})
 		if err != nil {
 			return err
 		}
-	case *UserNotificationEventDispatched:
-		err := u.ChangeRequestStatus(RequestStatusDispatched, data.ServerRequestID)
+	case *UserNotificationEventEnRoute:
+		if u.validatedRideNotificationEvent == nil {
+			slog.Error("validatedRideNotificationEventがnilです", slog.String("ride.Statuses.User", u.Ride.Statuses.User.String()), slog.String("data.ServerRideID", data.ServerRideID), slog.Int("len(RideHistory)", len(u.RideHistory)))
+
+		}
+		err := u.ChangeRideStatus(RideStatusEnRoute, data.ServerRideID, func() error {
+			// MATCHING時に受け取った値と変わっていないはずなので比較のみを行う
+			return fmt.Errorf("ride_status (before: %s, after: %s) %w", u.Ride.Statuses.User, RideStatusEnRoute, compareUserNotificationEvent(data.ServerRideID, *u.validatedRideNotificationEvent, data.UserNotificationEvent))
+		})
 		if err != nil {
 			return err
 		}
+
+	case *UserNotificationEventPickup:
+		err := u.ChangeRideStatus(RideStatusPickup, data.ServerRideID, func() error {
+			// MATCHING時に受け取った値と変わっていないはずなので比較のみを行う
+			return fmt.Errorf("ride_status (before: %s, after: %s) %w", u.Ride.Statuses.User, RideStatusPickup, compareUserNotificationEvent(data.ServerRideID, *u.validatedRideNotificationEvent, data.UserNotificationEvent))
+		})
+		if err != nil {
+			return err
+		}
+
+		u.Ride.Statuses.User = RideStatusPickup
+
 	case *UserNotificationEventCarrying:
-		err := u.ChangeRequestStatus(RequestStatusCarrying, data.ServerRequestID)
+		err := u.ChangeRideStatus(RideStatusCarrying, data.ServerRideID, func() error {
+			// MATCHING時に受け取った値と変わっていないはずなので比較のみを行う
+			return fmt.Errorf("ride_status (before: %s, after: %s) %w", u.Ride.Statuses.User, RideStatusCarrying, compareUserNotificationEvent(data.ServerRideID, *u.validatedRideNotificationEvent, data.UserNotificationEvent))
+		})
 		if err != nil {
 			return err
 		}
+
 	case *UserNotificationEventArrived:
-		err := u.ChangeRequestStatus(RequestStatusArrived, data.ServerRequestID)
+		err := u.ChangeRideStatus(RideStatusArrived, data.ServerRideID, func() error {
+			// MATCHING時に受け取った値と変わっていないはずなので比較のみを行う
+			return fmt.Errorf("ride_status (before: %s, after: %s) %w", u.Ride.Statuses.User, RideStatusArrived, compareUserNotificationEvent(data.ServerRideID, *u.validatedRideNotificationEvent, data.UserNotificationEvent))
+		})
 		if err != nil {
 			return err
 		}
+
 	case *UserNotificationEventCompleted:
-		err := u.ChangeRequestStatus(RequestStatusCompleted, data.ServerRequestID)
+		err := u.ChangeRideStatus(RideStatusCompleted, data.ServerRideID, func() error {
+			if u.Ride.Statuses.User != RideStatusCompleted {
+				// ARRIVEDからCOMPLETEDに遷移した際には、chair.statsが変化しているはずのなので再度バリデーションを行う
+				if err := u.ValidateNotificationEvent(data.ServerRideID, data.UserNotificationEvent); err != nil {
+					return fmt.Errorf("ride_status (before: %s, after: %s) %w", u.Ride.Statuses.User, RideStatusCompleted, err)
+				}
+				u.validatedRideNotificationEvent = &data.UserNotificationEvent
+				return nil
+			} else {
+				// バリデーション済みの結果と比較する
+				return fmt.Errorf("ride_status (before: %s, after: %s) %w", u.Ride.Statuses.User, RideStatusCompleted, compareUserNotificationEvent(data.ServerRideID, *u.validatedRideNotificationEvent, data.UserNotificationEvent))
+			}
+		})
 		if err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+func (u *User) ValidateNotificationEvent(rideID string, serverSide UserNotificationEvent) error {
+	if !serverSide.Pickup.Equals(u.Ride.PickupPoint) {
+		return fmt.Errorf("配車位置が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, serverSide.Pickup, u.Ride.PickupPoint)
+	}
+	if !serverSide.Destination.Equals(u.Ride.DestinationPoint) {
+		return fmt.Errorf("目的地が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, serverSide.Destination, u.Ride.DestinationPoint)
+	}
+
+	if serverSide.Fare != u.Ride.Fare() {
+		return fmt.Errorf("運賃が一致しません。(ride_id: %s, got: %d, want: %d)", rideID, serverSide.Fare, u.Ride.Fare())
+	}
+
+	if serverSide.Chair == nil {
+		return fmt.Errorf("椅子情報がありません。(ride_id: %s)", rideID)
+	}
+
+	serverSideChair := *serverSide.Chair
+
+	var chair *Chair
+	if u.Ride.Chair == nil {
+		//	MATCHING時には椅子情報が存在しない
+		chair = u.World.ChairDB.GetByServerID(serverSideChair.ID)
+		if chair == nil {
+			return fmt.Errorf("存在しない椅子が返却されました。(ride_id: %s, chair_id: %s)", rideID, serverSide.Chair.ID)
+		}
+	} else {
+		//	COMPLETED時には椅子情報が存在する
+		chair = u.Ride.Chair
+	}
+
+	if serverSideChair.Name != chair.RegisteredData.Name {
+		return fmt.Errorf("椅子の名前が一致しません。(ride_id: %s, chair_id: %s, got: %s, want: %s)", rideID, serverSide.Chair.ID, serverSide.Chair.Name, u.Ride.Chair.RegisteredData.Name)
+	}
+	if serverSideChair.Model != chair.Model.Name {
+		return fmt.Errorf("椅子のモデルが一致しません。(ride_id: %s, chair_id: %s, got: %s, want: %s)", rideID, serverSide.Chair.ID, serverSide.Chair.Model, u.Ride.Chair.Model)
+	}
+
+	totalRideCount := 0
+	totalEvaluation := 0
+	for _, r := range chair.RideHistory.Iter() {
+		if r.Evaluated.Load() {
+			totalRideCount++
+			totalEvaluation += r.CalculateEvaluation().Score()
+		}
+	}
+
+	if serverSideChair.Stats.TotalRidesCount != totalRideCount {
+		return fmt.Errorf("椅子の総乗車回数が一致しません。(ride_id: %s, chair_id: %s, got: %d, want: %d)", rideID, serverSide.Chair.ID, serverSide.Chair.Stats.TotalRidesCount, totalRideCount)
+	}
+	if totalRideCount != 0 && serverSideChair.Stats.TotalEvaluationAvg != float64(totalEvaluation)/float64(totalRideCount) {
+		return fmt.Errorf("椅子の評価の平均が一致しません。(ride_id: %s, chair_id: %s, got: %f, want: %f)", rideID, serverSide.Chair.ID, serverSide.Chair.Stats.TotalEvaluationAvg, float64(totalEvaluation)/float64(totalRideCount))
+	} else if serverSideChair.Stats.TotalEvaluationAvg != 0 {
+		return fmt.Errorf("椅子の評価の平均が一致しません。(ride_id: %s, chair_id: %s, got: %f, want: %f)", rideID, serverSide.Chair.ID, serverSide.Chair.Stats.TotalEvaluationAvg, 0.0)
+	}
+
+	return nil
+}
+
+// compareUserNotificationEvent validation済みのUserNotificationEventと比較して、一致しない場合はエラーを返す
+func compareUserNotificationEvent(rideID string, old, new UserNotificationEvent) error {
+	if !new.Pickup.Equals(old.Pickup) {
+		return fmt.Errorf("配車位置が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, new.Pickup, old.Pickup)
+	}
+	if !new.Destination.Equals(old.Destination) {
+		return fmt.Errorf("目的地が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, new.Destination, old.Destination)
+	}
+
+	if new.Fare != old.Fare {
+		return fmt.Errorf("運賃が一致しません。(ride_id: %s, got: %d, want: %d)", rideID, new.Fare, old.Fare)
+	}
+
+	if new.Chair == nil {
+		return fmt.Errorf("椅子情報がありません。(ride_id: %s)", rideID)
+	}
+
+	if new.Chair.ID != old.Chair.ID {
+		return fmt.Errorf("椅子のIDが一致しません。(ride_id: %s, got: %s, want: %s)", rideID, new.Chair.ID, old.Chair.ID)
+	}
+	if new.Chair.Name != old.Chair.Name {
+		return fmt.Errorf("椅子の名前が一致しません。(ride_id: %s, chair_id: %s, got: %s, want: %s)", rideID, new.Chair.ID, new.Chair.Name, old.Chair.Name)
+	}
+	if new.Chair.Model != old.Chair.Model {
+		return fmt.Errorf("椅子のモデルが一致しません。(ride_id: %s, chair_id: %s, got: %s, want: %s)", rideID, new.Chair.ID, new.Chair.Model, old.Chair.Model)
+	}
+
+	if new.Chair.Stats.TotalRidesCount != old.Chair.Stats.TotalRidesCount {
+		return fmt.Errorf("椅子の総乗車回数が一致しません。(ride_id: %s, chair_id: %s, got: %d, want: %d)", rideID, new.Chair.ID, new.Chair.Stats.TotalRidesCount, old.Chair.Stats.TotalRidesCount)
+	}
+	if new.Chair.Stats.TotalEvaluationAvg != old.Chair.Stats.TotalEvaluationAvg {
+		return fmt.Errorf("椅子の評価の平均が一致しません。(ride_id: %s, chair_id: %s, got: %f, want: %f)", rideID, new.Chair.ID, new.Chair.Stats.TotalEvaluationAvg, old.Chair.Stats.TotalEvaluationAvg)
+	}
+
 	return nil
 }

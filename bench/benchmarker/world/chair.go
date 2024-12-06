@@ -40,11 +40,11 @@ type Chair struct {
 	// RegisteredData サーバーに登録されている椅子情報
 	RegisteredData RegisteredChairData
 	// matchingData マッチング通知情報
-	matchingData *ChairNotificationEventMatched
-	// Request 進行中のリクエスト
-	Request *Request
-	// RequestHistory 引き受けたリクエストの履歴
-	RequestHistory *concurrent.SimpleSlice[*Request]
+	matchingData *ChairNotificationEventMatching
+	// Ride 進行中のライド
+	Ride *Ride
+	// RideHistory 引き受けたライドの履歴
+	RideHistory *concurrent.SimpleSlice[*Ride]
 	// Client webappへのクライアント
 	Client ChairClient
 	// Rand 専用の乱数
@@ -60,14 +60,14 @@ type Chair struct {
 	// forceStopped 強制停止されているかどうか
 	forceStopped bool
 
-	// detour 今回のリクエストで迂回するかどうか
+	// detour 今回のライドで迂回するかどうか
 	detour bool
-	// detoured 今回のリクエストで迂回したかどうか
+	// detoured 今回のライドで迂回したかどうか
 	detoured bool
 	// detourPoint 迂回ポイント
 	detourPoint Coordinate
-	// detourIn Dispaching or Carryingのどっちで迂回するか
-	detourIn RequestStatus
+	// detourIn Dispatching or Carryingのどっちで迂回するか
+	detourIn RideStatus
 }
 
 type RegisteredChairData struct {
@@ -110,46 +110,46 @@ func (c *Chair) Tick(ctx *Context) error {
 
 	switch {
 	// 進行中のリクエストが存在
-	case c.Request != nil:
-		switch c.Request.Statuses.Chair {
-		case RequestStatusMatching:
+	case c.Ride != nil:
+		switch c.Ride.Statuses.Chair {
+		case RideStatusMatching:
 			// Active状態なら配車要求をACKする
 			// そうでないなら、応答せずにハングさせる
 			if c.State == ChairStateActive {
-				c.Request.Statuses.Lock()
+				c.Ride.Statuses.Lock()
 
-				err := c.Client.SendAcceptRequest(ctx, c, c.Request)
+				err := c.Client.SendAcceptRequest(ctx, c, c.Ride)
 				if err != nil {
-					c.Request.Statuses.Unlock()
+					c.Ride.Statuses.Unlock()
 
-					return WrapCodeError(ErrorCodeFailedToAcceptRequest, err)
+					return WrapCodeError(ErrorCodeFailedToAcceptRide, err)
 				}
 
 				// サーバーに要求を受理の通知が通ったので配椅子地に向かう
-				c.Request.Chair = c
-				c.Request.Statuses.Desired = RequestStatusDispatching
-				c.Request.Statuses.Chair = RequestStatusDispatching
-				c.Request.StartPoint = null.ValueFrom(c.Location.Current())
-				c.Request.MatchedAt = ctx.CurrentTime()
-				c.Request.BenchMatchedAt = time.Now()
+				c.Ride.Chair = c
+				c.Ride.Statuses.Desired = RideStatusEnRoute
+				c.Ride.Statuses.Chair = RideStatusEnRoute
+				c.Ride.StartPoint = null.ValueFrom(c.Location.Current())
+				c.Ride.MatchedAt = ctx.CurrentTime()
+				c.Ride.BenchMatchedAt = time.Now()
 
-				c.Request.Statuses.Unlock()
+				c.Ride.Statuses.Unlock()
 
-				c.RequestHistory.Append(c.Request)
-				if !c.Request.User.Region.Contains(c.Location.Current()) {
-					ctx.ContestantLogger().Warn("ユーザーのリージョン外部に存在する椅子がマッチングされました", slog.Int("distance", c.Request.PickupPoint.DistanceTo(c.Location.Current())))
+				c.RideHistory.Append(c.Ride)
+				if !c.Ride.User.Region.Contains(c.Location.Current()) {
+					ctx.ContestantLogger().Warn("ユーザーのリージョン外部に存在する椅子がマッチングされました", slog.Int("distance", c.Ride.PickupPoint.DistanceTo(c.Location.Current())))
 				}
 			}
 
-		case RequestStatusDispatching:
+		case RideStatusEnRoute:
 			// 配車位置に向かう
 			time := ctx.CurrentTime()
-			if c.detour && c.detourIn == RequestStatusDispatching && !c.detoured {
+			if c.detour && c.detourIn == RideStatusEnRoute && !c.detoured {
 				// 迂回する予定でまだ迂回してない場合
 				if c.Location.Current().Equals(c.detourPoint) {
 					// 迂回ポイントに着いた次の移動は配車位置から離れる方向に行う
 					c.Location.MoveTo(&LocationEntry{
-						Coord: c.moveOppositeTo(c.Request.PickupPoint),
+						Coord: c.moveOppositeTo(c.Ride.PickupPoint),
 						Time:  time,
 					})
 					c.detoured = true
@@ -163,46 +163,46 @@ func (c *Chair) Tick(ctx *Context) error {
 			} else {
 				// 配車位置に向かう
 				c.Location.MoveTo(&LocationEntry{
-					Coord: c.moveToward(c.Request.PickupPoint),
+					Coord: c.moveToward(c.Ride.PickupPoint),
 					Time:  time,
 				})
 			}
 
-			if c.Location.Current().Equals(c.Request.PickupPoint) {
+			if c.Location.Current().Equals(c.Ride.PickupPoint) {
 				// 配車位置に到着
-				c.Request.Statuses.Desired = RequestStatusDispatched
-				c.Request.Statuses.Chair = RequestStatusDispatched
-				c.Request.DispatchedAt = time
+				c.Ride.Statuses.Desired = RideStatusPickup
+				c.Ride.Statuses.Chair = RideStatusPickup
+				c.Ride.DispatchedAt = time
 			}
 
-		case RequestStatusDispatched:
+		case RideStatusPickup:
 			// 乗客を乗せて出発しようとする
-			if c.Request.Statuses.User != RequestStatusDispatched {
+			if c.Ride.Statuses.User != RideStatusPickup {
 				// ただし、ユーザーに到着通知が行っていないとユーザーは乗らない振る舞いをするので
 				// ユーザー側の状態が変わるまで待機する
 				// 一向にユーザーの状態が変わらない場合は、この椅子の行動はハングする
 				break
 			}
 
-			err := c.Client.SendDepart(ctx, c.Request)
+			err := c.Client.SendDepart(ctx, c.Ride)
 			if err != nil {
 				return WrapCodeError(ErrorCodeFailedToDepart, err)
 			}
 
 			// サーバーがdepartを受理したので出発する
-			c.Request.Statuses.Desired = RequestStatusCarrying
-			c.Request.Statuses.Chair = RequestStatusCarrying
-			c.Request.PickedUpAt = ctx.CurrentTime()
+			c.Ride.Statuses.Desired = RideStatusCarrying
+			c.Ride.Statuses.Chair = RideStatusCarrying
+			c.Ride.PickedUpAt = ctx.CurrentTime()
 
-		case RequestStatusCarrying:
+		case RideStatusCarrying:
 			// 目的地に向かう
 			time := ctx.CurrentTime()
-			if c.detour && c.detourIn == RequestStatusCarrying && !c.detoured {
+			if c.detour && c.detourIn == RideStatusCarrying && !c.detoured {
 				// 迂回する予定でまだ迂回してない場合
 				if c.Location.Current().Equals(c.detourPoint) {
 					// 迂回ポイントに着いた次の移動は目的地から離れる方向に行う
 					c.Location.MoveTo(&LocationEntry{
-						Coord: c.moveOppositeTo(c.Request.DestinationPoint),
+						Coord: c.moveOppositeTo(c.Ride.DestinationPoint),
 						Time:  time,
 					})
 					c.detoured = true
@@ -216,32 +216,33 @@ func (c *Chair) Tick(ctx *Context) error {
 			} else {
 				// 目的地に向かう
 				c.Location.MoveTo(&LocationEntry{
-					Coord: c.moveToward(c.Request.DestinationPoint),
+					Coord: c.moveToward(c.Ride.DestinationPoint),
 					Time:  time,
 				})
 			}
 
-			if c.Location.Current().Equals(c.Request.DestinationPoint) {
+			if c.Location.Current().Equals(c.Ride.DestinationPoint) {
 				// 目的地に到着
-				c.Request.Statuses.Desired = RequestStatusArrived
-				c.Request.Statuses.Chair = RequestStatusArrived
-				c.Request.ArrivedAt = time
+				c.Ride.Statuses.Desired = RideStatusArrived
+				c.Ride.Statuses.Chair = RideStatusArrived
+				c.Ride.ArrivedAt = time
 				break
 			}
 
-		case RequestStatusArrived:
+		case RideStatusArrived:
 			// 客が評価するまで待機する
 			// 一向に評価されない場合は、この椅子の行動はハングする
 			break
 
-		case RequestStatusCompleted:
+		case RideStatusCompleted:
+			// c.HandleNotificationでCompletedを受け取った際に c.Ride = nil にしている
 			slog.Warn("unexpected state")
 			break
 		}
 
 	// アサインされたリクエストが存在するが、詳細を未取得
-	case c.Request == nil && c.matchingData != nil:
-		req := c.World.RequestDB.GetByServerID(c.matchingData.ServerRequestID)
+	case c.Ride == nil && c.matchingData != nil:
+		req := c.World.RideDB.GetByServerID(c.matchingData.ServerRideID)
 		if req == nil {
 			// ロックの関係でまだRequestDBに入ってないreqのため、次のtickで処理する
 			// ベンチマーク外で作成されたリクエストがアサインされた場合はどうしようもできないのでハングする
@@ -257,17 +258,17 @@ func (c *Chair) Tick(ctx *Context) error {
 		}
 
 		// 椅子がリクエストを正常に認識する
-		c.Request = req
+		c.Ride = req
 		// 10%の確率で迂回させる(最短距離より1単位速度分だけ遠回しさせる)
 		c.detour = c.Rand.Float64() < 0.1
 		c.detoured = false
 		if c.detour {
 			if c.Rand.IntN(2) == 0 {
-				c.detourIn = RequestStatusDispatching
-				c.detourPoint = CalculateRandomDetourPoint(c.Location.Current(), c.Request.PickupPoint, c.Model.Speed, c.Rand)
+				c.detourIn = RideStatusEnRoute
+				c.detourPoint = CalculateRandomDetourPoint(c.Location.Current(), c.Ride.PickupPoint, c.Model.Speed, c.Rand)
 			} else {
-				c.detourIn = RequestStatusCarrying
-				c.detourPoint = CalculateRandomDetourPoint(c.Request.PickupPoint, c.Request.DestinationPoint, c.Model.Speed, c.Rand)
+				c.detourIn = RideStatusCarrying
+				c.detourPoint = CalculateRandomDetourPoint(c.Ride.PickupPoint, c.Ride.DestinationPoint, c.Model.Speed, c.Rand)
 			}
 		}
 
@@ -418,39 +419,62 @@ func (c *Chair) moveRandom() (to Coordinate) {
 
 func (c *Chair) HandleNotification(event NotificationEvent) error {
 	switch data := event.(type) {
-	case *ChairNotificationEventMatched:
-		if c.matchingData != nil && c.matchingData.ServerRequestID != data.ServerRequestID {
+	case *ChairNotificationEventMatching:
+		if c.matchingData != nil && c.matchingData.ServerRideID != data.ServerRideID {
 			// 椅子が別のリクエストを保持している
-			slog.Debug(fmt.Sprintf("code:%d", ErrorCodeChairAlreadyHasRequest), slog.Any("ride", c.Request))
-			return WrapCodeError(ErrorCodeChairAlreadyHasRequest, fmt.Errorf("chair_id: %s, current_ride_id: %s, got: %s", c.ServerID, c.matchingData.ServerRequestID, data.ServerRequestID))
+			slog.Debug(fmt.Sprintf("code:%d", ErrorCodeChairAlreadyHasRequest), slog.Any("ride", c.Ride))
+			return WrapCodeError(ErrorCodeChairAlreadyHasRequest, fmt.Errorf("chair_id: %s, current_ride_id: %s, got: %s", c.ServerID, c.matchingData.ServerRideID, data.ServerRideID))
 		}
+
 		c.World.EmptyChairs.Delete(c)
 		c.matchingData = data
 
 	case *ChairNotificationEventCompleted:
-		request := c.Request
-		if request == nil {
+		if err := c.ValidateChairNotificationEvent(data.ServerRideID, data.ChairNotificationEvent); err != nil {
+			return WrapCodeError(ErrorCodeIncorrectChairNotificationData, err)
+		}
+
+		if c.Ride == nil {
 			// 履歴を見て、過去扱っていたRequestに向けてのCOMPLETED通知であれば無視する
-			for _, r := range c.RequestHistory.BackwardIter() {
-				if r.ServerID == data.ServerRequestID && r.Statuses.Desired == RequestStatusCompleted {
-					r.Statuses.Chair = RequestStatusCompleted
+			for _, r := range c.RideHistory.BackwardIter() {
+				if r.ServerID == data.ServerRideID && r.Statuses.Desired == RideStatusCompleted {
+					r.Statuses.Chair = RideStatusCompleted
 					return nil
 				}
 			}
-			return WrapCodeError(ErrorCodeChairNotAssignedButStatusChanged, fmt.Errorf("ride_id: %s, got: %v", data.ServerRequestID, RequestStatusCompleted))
+			return WrapCodeError(ErrorCodeChairNotAssignedButStatusChanged, fmt.Errorf("ride_id: %s, got: %v", data.ServerRideID, RideStatusCompleted))
 		}
 
-		c.Request.Statuses.RLock()
-		defer c.Request.Statuses.RUnlock()
-		if request.Statuses.Desired != RequestStatusCompleted {
-			return WrapCodeError(ErrorCodeUnexpectedChairRequestStatusTransitionOccurred, fmt.Errorf("ride_id: %s, expect: %v, got: %v", request.ServerID, request.Statuses.Desired, RequestStatusCompleted))
+		c.Ride.Statuses.RLock()
+		defer c.Ride.Statuses.RUnlock()
+		if c.Ride.Statuses.Desired != RideStatusCompleted {
+			return WrapCodeError(ErrorCodeUnexpectedChairRequestStatusTransitionOccurred, fmt.Errorf("ride_id: %s, expect: %v, got: %v", c.Ride.ServerID, c.Ride.Statuses.Desired, RideStatusCompleted))
 		}
-		request.Statuses.Chair = RequestStatusCompleted
+		c.Ride.Statuses.Chair = RideStatusCompleted
 
 		// 進行中のリクエストが無い状態にする
-		c.Request = nil
+		c.Ride = nil
 		c.matchingData = nil
 		c.World.EmptyChairs.Add(c)
 	}
+
+	return nil
+}
+
+func (c *Chair) ValidateChairNotificationEvent(rideID string, event ChairNotificationEvent) error {
+	if event.User.ID == c.matchingData.User.ID {
+		return fmt.Errorf("ユーザーのIDが一致しません。(ride_id: %s, got: %s, want: %s", rideID, event.User.ID, c.matchingData.User.ID)
+	}
+	if event.User.Name != c.matchingData.User.Name {
+		return fmt.Errorf("ユーザーの名前が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, event.User.Name, c.matchingData.User.Name)
+	}
+
+	if !event.Pickup.Equals(c.matchingData.Pickup) {
+		return fmt.Errorf("配車位置が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, event.Pickup, c.matchingData.Pickup)
+	}
+	if !event.Destination.Equals(c.matchingData.Destination) {
+		return fmt.Errorf("目的地が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, event.Destination, c.matchingData.Destination)
+	}
+
 	return nil
 }

@@ -17,21 +17,21 @@ const (
 	FarePerDistance = 100
 )
 
-type RequestStatus int
+type RideStatus int
 
-func (r RequestStatus) String() string {
+func (r RideStatus) String() string {
 	switch r {
-	case RequestStatusMatching:
+	case RideStatusMatching:
 		return "MATCHING"
-	case RequestStatusDispatching:
-		return "DISPATCHING"
-	case RequestStatusDispatched:
-		return "DISPATCHED"
-	case RequestStatusCarrying:
+	case RideStatusEnRoute:
+		return "ENROUTE"
+	case RideStatusPickup:
+		return "PICKUP"
+	case RideStatusCarrying:
 		return "CARRYING"
-	case RequestStatusArrived:
+	case RideStatusArrived:
 		return "ARRIVED"
-	case RequestStatusCompleted:
+	case RideStatusCompleted:
 		return "COMPLETED"
 	default:
 		return "UNKNOWN"
@@ -39,20 +39,20 @@ func (r RequestStatus) String() string {
 }
 
 const (
-	RequestStatusMatching RequestStatus = iota
-	RequestStatusDispatching
-	RequestStatusDispatched
-	RequestStatusCarrying
-	RequestStatusArrived
-	RequestStatusCompleted
+	RideStatusMatching RideStatus = iota
+	RideStatusEnRoute
+	RideStatusPickup
+	RideStatusCarrying
+	RideStatusArrived
+	RideStatusCompleted
 )
 
-type RequestID int
+type RideID int
 
-type Request struct {
-	// ID ベンチマーカー内部リクエストID
-	ID RequestID
-	// ServerID サーバー上でのリクエストID
+type Ride struct {
+	// ID ベンチマーカー内部ライドID
+	ID RideID
+	// ServerID サーバー上でのライドID
 	ServerID string
 	// User リクエストしたユーザー
 	User *User
@@ -68,61 +68,61 @@ type Request struct {
 	// StartPoint 椅子の初期位置。割り当てられるまでnil
 	StartPoint null.Value[Coordinate]
 
-	// RequestedAt リクエストを行った時間
+	// RequestedAt 配車リクエストを行った時間
 	RequestedAt int64
 	// MatchedAt マッチングが完了した時間。割り当てられるまで0
 	MatchedAt int64
-	// DispatchedAt 配椅子位置についた時間。割り当てられるまで0
+	// DispatchedAt 配車位置についた時間。割り当てられるまで0
 	DispatchedAt int64
 	// PickedUpAt ピックアップされ出発された時間。割り当てられるまで0
 	PickedUpAt int64
 	// ArrivedAt 目的地に到着した時間。割り当てられるまで0
 	ArrivedAt int64
-	// CompletedAt リクエストが正常に完了した時間。割り当てられるまで0
+	// CompletedAt ライドが正常に完了した時間。割り当てられるまで0
 	CompletedAt int64
 	// ServerCompletedAt サーバー側で記録されている完了時間
 	ServerCompletedAt time.Time
 	// BenchMatchedAt ベンチがAcceptのリクエストを送って成功した時間
 	BenchMatchedAt time.Time
 
-	// Evaluated リクエストの評価が完了しているかどうか
+	// Evaluated ライドの評価が完了しているかどうか
 	Evaluated atomic.Bool
 
-	Statuses RequestStatuses
+	Statuses RideStatuses
 }
 
-func (r *Request) String() string {
+func (r *Ride) String() string {
 	chairID := "<nil>"
 	if r.Chair != nil {
 		chairID = strconv.Itoa(int(r.Chair.ID))
 	}
 	return fmt.Sprintf(
-		"Request{id=%d,status=%s,user=%d,from=%s,to=%s,chair=%s,time=%s}",
+		"Ride{id=%d,status=%s,user=%d,from=%s,to=%s,chair=%s,time=%s}",
 		r.ID, r.Statuses.String(), r.User.ID, r.PickupPoint, r.DestinationPoint, chairID, r.timelineString(),
 	)
 }
 
-func (r *Request) SetID(id RequestID) {
+func (r *Ride) SetID(id RideID) {
 	r.ID = id
 }
 
 // Sales 売り上げ
-func (r *Request) Sales() int {
+func (r *Ride) Sales() int {
 	return InitialFare + r.PickupPoint.DistanceTo(r.DestinationPoint)*FarePerDistance
 }
 
 // Fare ユーザーが支払う料金
-func (r *Request) Fare() int {
+func (r *Ride) Fare() int {
 	return InitialFare + max(r.PickupPoint.DistanceTo(r.DestinationPoint)*FarePerDistance-r.Discount, 0)
 }
 
 // ActualDiscount 実際に割り引いた価格
-func (r *Request) ActualDiscount() int {
+func (r *Ride) ActualDiscount() int {
 	return r.Sales() - r.Fare()
 }
 
 // CalculateEvaluation 送迎の評価値を計算する
-func (r *Request) CalculateEvaluation() Evaluation {
+func (r *Ride) CalculateEvaluation() Evaluation {
 	if !(r.MatchedAt > 0 && r.DispatchedAt > 0 && r.PickedUpAt > 0 && r.ArrivedAt > 0) {
 		panic("計算に必要な時間情報が足りていない状況なのに評価値を計算しようとしている")
 	}
@@ -165,7 +165,7 @@ func (r *Request) CalculateEvaluation() Evaluation {
 	return result
 }
 
-func (r *Request) Intervals() [3]int64 {
+func (r *Ride) Intervals() [3]int64 {
 	return [3]int64{
 		max(0, r.MatchedAt-r.RequestedAt),
 		max(0, r.DispatchedAt-r.MatchedAt),
@@ -173,7 +173,7 @@ func (r *Request) Intervals() [3]int64 {
 	}
 }
 
-func (r *Request) timelineString() string {
+func (r *Ride) timelineString() string {
 	baseTime := r.RequestedAt
 	matchTime := max(0, r.MatchedAt-r.RequestedAt)
 	dispatchTime := max(0, r.DispatchedAt-r.RequestedAt)
@@ -185,23 +185,23 @@ func (r *Request) timelineString() string {
 
 const ForwardingScoreDenominator = 10
 
-func (r *Request) Score() int {
+func (r *Ride) Score() int {
 	return r.Sales() + r.StartPoint.V.DistanceTo(r.PickupPoint)*FarePerDistance/ForwardingScoreDenominator
 }
 
-func (r *Request) PartialScore() int {
+func (r *Ride) PartialScore() int {
 	switch r.Statuses.Desired {
-	case RequestStatusMatching:
+	case RideStatusMatching:
 		return 0
-	case RequestStatusDispatching:
+	case RideStatusEnRoute:
 		return r.StartPoint.V.DistanceTo(r.Chair.Location.Current()) * FarePerDistance / ForwardingScoreDenominator
-	case RequestStatusDispatched:
+	case RideStatusPickup:
 		return r.StartPoint.V.DistanceTo(r.PickupPoint) * FarePerDistance / ForwardingScoreDenominator
-	case RequestStatusCarrying:
+	case RideStatusCarrying:
 		return r.StartPoint.V.DistanceTo(r.PickupPoint)*FarePerDistance/ForwardingScoreDenominator + r.PickupPoint.DistanceTo(r.Chair.Location.Current())*FarePerDistance
-	case RequestStatusArrived:
+	case RideStatusArrived:
 		return r.Score() - InitialFare
-	case RequestStatusCompleted:
+	case RideStatusCompleted:
 		return r.Score()
 	default:
 		panic("unknown status")
@@ -236,38 +236,38 @@ func (e Evaluation) Score() int {
 	return result
 }
 
-type RequestStatuses struct {
-	// Desired 現在の想定されるリクエストステータス
-	Desired RequestStatus
+type RideStatuses struct {
+	// Desired 現在の想定されるステータス
+	Desired RideStatus
 	// Chair 現在椅子が認識しているステータス
-	Chair RequestStatus
+	Chair RideStatus
 	// User 現在ユーザーが認識しているステータス
-	User RequestStatus
+	User RideStatus
 
 	m sync.RWMutex
 }
 
-func (s *RequestStatuses) String() string {
+func (s *RideStatuses) String() string {
 	d, c, u := s.Get()
 	return fmt.Sprintf("(%v,%v,%v)", d, c, u)
 }
 
-func (s *RequestStatuses) Get() (desired, chair, user RequestStatus) {
+func (s *RideStatuses) Get() (desired, chair, user RideStatus) {
 	return s.Desired, s.Chair, s.User
 }
 
 // Lock DesiredのみをWrite Lockします
 // MEMO: ロックを取らなけらばならないところ以外はとってない
-func (s *RequestStatuses) Lock() { s.m.Lock() }
+func (s *RideStatuses) Lock() { s.m.Lock() }
 
 // Unlock DesiredのみをWrite Unlockします
 // MEMO: ロックを取らなけらばならないところ以外はとってない
-func (s *RequestStatuses) Unlock() { s.m.Unlock() }
+func (s *RideStatuses) Unlock() { s.m.Unlock() }
 
 // RLock DesiredのみをRead Lockします
 // MEMO: ロックを取らなけらばならないところ以外はとってない
-func (s *RequestStatuses) RLock() { s.m.RLock() }
+func (s *RideStatuses) RLock() { s.m.RLock() }
 
 // RUnlock DesiredのみをRead Unlockします
 // MEMO: ロックを取らなけらばならないところ以外はとってない
-func (s *RequestStatuses) RUnlock() { s.m.RUnlock() }
+func (s *RideStatuses) RUnlock() { s.m.RUnlock() }

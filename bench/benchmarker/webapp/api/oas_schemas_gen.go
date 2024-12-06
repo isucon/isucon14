@@ -788,7 +788,7 @@ func (*ChairPostRideStatusNoContent) chairPostRideStatusRes() {}
 
 type ChairPostRideStatusReq struct {
 	// ライドの状態
-	// ENROUTE: マッチしたライドを確認し、乗車位置に向かう
+	// ENROUTE: マッチしたライドを確認し、配車位置に向かう
 	// CARRYING: ユーザーが乗車し、椅子が目的地に向かう.
 	Status ChairPostRideStatusReqStatus `json:"status"`
 }
@@ -804,7 +804,7 @@ func (s *ChairPostRideStatusReq) SetStatus(val ChairPostRideStatusReqStatus) {
 }
 
 // ライドの状態
-// ENROUTE: マッチしたライドを確認し、乗車位置に向かう
+// ENROUTE: マッチしたライドを確認し、配車位置に向かう
 // CARRYING: ユーザーが乗車し、椅子が目的地に向かう.
 type ChairPostRideStatusReqStatus string
 
@@ -1998,8 +1998,8 @@ func (s *PostInitializeReq) SetPaymentServer(val string) {
 // ライドのステータス
 // MATCHING:
 // サービス上でマッチング処理を行なっていて椅子が確定していない
-// ENROUTE: 椅子が確定し、乗車位置に向かっている
-// PICKUP: 椅子が乗車位置に到着して、ユーザーの乗車を待機している
+// ENROUTE: 椅子が確定し、配車位置に向かっている
+// PICKUP: 椅子が配車位置に到着して、ユーザーの乗車を待機している
 // CARRYING: ユーザーが乗車し、椅子が目的地に向かっている
 // ARRIVED: 目的地に到着した
 // COMPLETED: ユーザーの決済・椅子評価が完了した.

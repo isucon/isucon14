@@ -18,7 +18,7 @@ type WorldClient interface {
 
 type UserClient interface {
 	// SendCreateRequest サーバーにリクエスト作成を送信する
-	SendCreateRequest(ctx *Context, req *Request) (*SendCreateRequestResponse, error)
+	SendCreateRequest(ctx *Context, req *Ride) (*SendCreateRequestResponse, error)
 	// GetRequests サーバーからリクエスト一覧を取得する
 	GetRequests(ctx *Context) (*GetRequestsResponse, error)
 	// GetNearbyChairs サーバーから近くの椅子の情報を取得する
@@ -26,7 +26,7 @@ type UserClient interface {
 	// GetEstimatedFare サーバーから料金の見積もりを取る
 	GetEstimatedFare(ctx *Context, pickup Coordinate, dest Coordinate) (*GetEstimatedFareResponse, error)
 	// SendEvaluation サーバーに今回の送迎の評価を送信する
-	SendEvaluation(ctx *Context, req *Request, score int) (*SendEvaluationResponse, error)
+	SendEvaluation(ctx *Context, req *Ride, score int) (*SendEvaluationResponse, error)
 	// RegisterPaymentMethods サーバーにユーザーの支払い情報を登録する
 	RegisterPaymentMethods(ctx *Context, user *User) error
 	// ConnectUserNotificationStream ユーザー用の通知ストリームに接続する
@@ -48,9 +48,9 @@ type ChairClient interface {
 	// SendChairCoordinate サーバーに椅子の座標を送信する
 	SendChairCoordinate(ctx *Context, chair *Chair) (*SendChairCoordinateResponse, error)
 	// SendAcceptRequest サーバーに配椅子要求を受理することを報告する
-	SendAcceptRequest(ctx *Context, chair *Chair, req *Request) error
+	SendAcceptRequest(ctx *Context, chair *Chair, req *Ride) error
 	// SendDepart サーバーに客が搭乗完了して出発することを報告する
-	SendDepart(ctx *Context, req *Request) error
+	SendDepart(ctx *Context, req *Ride) error
 	// SendActivate サーバーにリクエストの受付開始を通知する
 	SendActivate(ctx *Context, chair *Chair) error
 	// ConnectChairNotificationStream 椅子用の通知ストリームに接続する

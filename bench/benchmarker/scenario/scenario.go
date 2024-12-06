@@ -52,7 +52,7 @@ type Scenario struct {
 }
 
 func NewScenario(target, addr, paymentURL string, logger *slog.Logger, reporter benchrun.Reporter, meter metric.Meter, prepareOnly bool, skipStaticFileSanityCheck bool) *Scenario {
-	completedRequestChan := make(chan *world.Request, 1000)
+	completedRequestChan := make(chan *world.Ride, 1000)
 	worldClient := worldclient.NewWorldClient(context.Background(), webapp.ClientConfig{
 		TargetBaseURL:         target,
 		TargetAddr:            addr,
@@ -72,13 +72,13 @@ func NewScenario(target, addr, paymentURL string, logger *slog.Logger, reporter 
 		world.UserStateActive:                    attribute.NewSet(attribute.Int("state", int(world.UserStateActive))),
 		world.UserStatePaymentMethodsNotRegister: attribute.NewSet(attribute.Int("state", int(world.UserStatePaymentMethodsNotRegister))),
 	}
-	requestsAttributeSets := map[world.RequestStatus]attribute.Set{
-		world.RequestStatusMatching:    attribute.NewSet(attribute.Int("status", int(world.RequestStatusMatching))),
-		world.RequestStatusDispatching: attribute.NewSet(attribute.Int("status", int(world.RequestStatusDispatching))),
-		world.RequestStatusDispatched:  attribute.NewSet(attribute.Int("status", int(world.RequestStatusDispatched))),
-		world.RequestStatusCarrying:    attribute.NewSet(attribute.Int("status", int(world.RequestStatusCarrying))),
-		world.RequestStatusArrived:     attribute.NewSet(attribute.Int("status", int(world.RequestStatusArrived))),
-		world.RequestStatusCompleted:   attribute.NewSet(attribute.Int("status", int(world.RequestStatusCompleted))),
+	requestsAttributeSets := map[world.RideStatus]attribute.Set{
+		world.RideStatusMatching:  attribute.NewSet(attribute.Int("status", int(world.RideStatusMatching))),
+		world.RideStatusEnRoute:   attribute.NewSet(attribute.Int("status", int(world.RideStatusEnRoute))),
+		world.RideStatusPickup:    attribute.NewSet(attribute.Int("status", int(world.RideStatusPickup))),
+		world.RideStatusCarrying:  attribute.NewSet(attribute.Int("status", int(world.RideStatusCarrying))),
+		world.RideStatusArrived:   attribute.NewSet(attribute.Int("status", int(world.RideStatusArrived))),
+		world.RideStatusCompleted: attribute.NewSet(attribute.Int("status", int(world.RideStatusCompleted))),
 	}
 
 	lo.Must1(meter.Int64ObservableCounter("world.time", metric.WithDescription("Time"), metric.WithUnit("1"), metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
@@ -118,7 +118,7 @@ func NewScenario(target, addr, paymentURL string, logger *slog.Logger, reporter 
 		return nil
 	})))
 	lo.Must1(meter.Int64ObservableGauge("world.requests.num", metric.WithDescription("Number of requests"), metric.WithUnit("1"), metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
-		counts := lo.CountValuesBy(w.RequestDB.ToSlice(), func(r *world.Request) world.RequestStatus { return r.Statuses.Desired })
+		counts := lo.CountValuesBy(w.RideDB.ToSlice(), func(r *world.Ride) world.RideStatus { return r.Statuses.Desired })
 		for status, set := range requestsAttributeSets {
 			o.Observe(int64(counts[status]), metric.WithAttributeSet(set))
 		}
@@ -282,7 +282,7 @@ func (s *Scenario) Score(final bool) int64 {
 	}
 	score := lo.SumBy(s.world.OwnerDB.ToSlice(), func(p *world.Owner) int64 { return p.SubScore.Load() }) / 100
 	if final {
-		score += lo.SumBy(s.world.RequestDB.ToSlice(), func(r *world.Request) int64 {
+		score += lo.SumBy(s.world.RideDB.ToSlice(), func(r *world.Ride) int64 {
 			if r.Evaluated.Load() {
 				return 0
 			}
@@ -294,7 +294,7 @@ func (s *Scenario) Score(final bool) int64 {
 }
 
 func (s *Scenario) TotalDiscount() int64 {
-	return lo.SumBy(s.world.RequestDB.ToSlice(), func(r *world.Request) int64 {
+	return lo.SumBy(s.world.RideDB.ToSlice(), func(r *world.Ride) int64 {
 		if r.Evaluated.Load() {
 			return int64(r.ActualDiscount())
 		} else {

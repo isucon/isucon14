@@ -9,7 +9,7 @@ type unimplementedEvent struct{}
 func (*unimplementedEvent) isWorldEvent() {}
 
 type EventRequestCompleted struct {
-	Request *Request
+	Request *Ride
 
 	unimplementedEvent
 }

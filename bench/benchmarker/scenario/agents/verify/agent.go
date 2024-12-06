@@ -53,7 +53,7 @@ package verify
 // 			return err
 // 		}
 
-// 		userClient.AddRequestModifier(func(req *http.Request) {
+// 		userClient.AddRequestModifier(func(req *http.Ride) {
 // 			req.Header.Set("Authorization", "Bearer "+registerRes.AccessToken)
 // 		})
 // 	}
@@ -77,7 +77,7 @@ package verify
 // 			return err
 // 		}
 
-// 		chairClient.AddRequestModifier(func(req *http.Request) {
+// 		chairClient.AddRequestModifier(func(req *http.Ride) {
 // 			req.Header.Set("Authorization", "Bearer "+registerRes.AccessToken)
 // 		})
 // 	}
@@ -145,7 +145,7 @@ package verify
 // 			return err
 // 		}
 // 		if req.Status != api.RequestStatusDispatching {
-// 			a.contestantLogger.Error("Request status is not matching")
+// 			a.contestantLogger.Error("Ride status is not matching")
 // 			return nil
 // 		}
 // 	}
@@ -168,12 +168,12 @@ package verify
 // 			return err
 // 		}
 // 		if req.Status != api.RequestStatusDispatched {
-// 			a.contestantLogger.Error("Request status is not dispatched")
+// 			a.contestantLogger.Error("Ride status is not dispatched")
 // 			return fmt.Errorf("request status is not dispatched")
 // 		}
 // 	}
 
-// 	// ドライバーが乗車位置に到着
+// 	// ドライバーが配車位置に到着
 // 	{
 // 		_, err := chairClient.ChairPostCoordinate(ctx, &pickupCoordinate)
 // 		if err != nil {
@@ -200,7 +200,7 @@ package verify
 // 		}
 
 // 		if req.Status != api.RequestStatusCarrying {
-// 			a.contestantLogger.Error("Request status is not carrying")
+// 			a.contestantLogger.Error("Ride status is not carrying")
 // 			return fmt.Errorf("request status is not carrying")
 // 		}
 // 	}
@@ -223,7 +223,7 @@ package verify
 // 	//	}
 // 	//
 // 	//	if req.Status != api.RequestStatusArrived {
-// 	//		a.contestantLogger.Error("Request status is not arrived")
+// 	//		a.contestantLogger.Error("Ride status is not arrived")
 // 	//		return fmt.Errorf("request status is not arrived")
 // 	//	}
 // 	//}
@@ -248,7 +248,7 @@ package verify
 // 		}
 
 // 		if req.Status != api.RequestStatusCompleted {
-// 			a.contestantLogger.Error("Request status is not completed")
+// 			a.contestantLogger.Error("Ride status is not completed")
 // 			return fmt.Errorf("request status is not completed")
 // 		}
 // 	}

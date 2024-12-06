@@ -20,8 +20,8 @@ const (
 	ErrorCodeFailedToSendChairCoordinate
 	// ErrorCodeFailedToDepart 椅子が出発しようとしたが、departリクエストが失敗した
 	ErrorCodeFailedToDepart
-	// ErrorCodeFailedToAcceptRequest 椅子がリクエストを受理しようとしたが失敗した
-	ErrorCodeFailedToAcceptRequest
+	// ErrorCodeFailedToAcceptRide 椅子がリクエストを受理しようとしたが失敗した
+	ErrorCodeFailedToAcceptRide
 	_
 	// ErrorCodeFailedToEvaluate ユーザーが送迎の評価をしようとしたが失敗した
 	ErrorCodeFailedToEvaluate
@@ -69,8 +69,12 @@ const (
 	ErrorCodeUncontrollableRequestReceived
 	// ErrorCodeChairReceivedDataIsWrong 椅子が通知から受け取ったデータが想定と異なります
 	ErrorCodeChairReceivedDataIsWrong
-	// ErrorCodeWrongNearbyChairs 取得した付近の椅子情報に不備があります
-	ErrorCodeWrongNearbyChairs
+	// ErrorCodeIncorrectNearbyChairs 取得した付近の椅子情報に不備があります
+	ErrorCodeIncorrectNearbyChairs
+	// ErrorCodeIncorrectChairNotificationData 取得した椅子用の通知情報に不備があります
+	ErrorCodeIncorrectChairNotificationData
+	// ErrorCodeIncorrectUserNotificationData 取得したユーザー用の通知情報に不備があります
+	ErrorCodeIncorrectUserNotificationData
 )
 
 var CriticalErrorCodes = map[ErrorCode]bool{
@@ -86,7 +90,7 @@ var CriticalErrorCodes = map[ErrorCode]bool{
 var ErrorTexts = map[ErrorCode]string{
 	ErrorCodeFailedToSendChairCoordinate:                    "椅子の座標送信に失敗しました",
 	ErrorCodeFailedToDepart:                                 "椅子が出発できませんでした",
-	ErrorCodeFailedToAcceptRequest:                          "椅子がライドを受理できませんでした",
+	ErrorCodeFailedToAcceptRide:                             "椅子がライドを受理できませんでした",
 	ErrorCodeFailedToEvaluate:                               "ユーザーのライド評価に失敗しました",
 	ErrorCodeFailedToCheckRequestHistory:                    "ユーザーがライド履歴の取得に失敗しました",
 	ErrorCodeFailedToCreateRequest:                          "ユーザーが新しくライドを作成できませんでした",
@@ -109,7 +113,9 @@ var ErrorTexts = map[ErrorCode]string{
 	ErrorCodeTooOldNearbyChairsResponse:                     "取得した付近の椅子情報が古すぎます",
 	ErrorCodeUncontrollableRequestReceived:                  "アサインされたライドがベンチマーカー外で作られたものであるため処理できません",
 	ErrorCodeChairReceivedDataIsWrong:                       "椅子が受け取った通知の内容が想定と異なります",
-	ErrorCodeWrongNearbyChairs:                              "取得した付近の椅子情報に不備があります",
+	ErrorCodeIncorrectNearbyChairs:                          "取得した付近の椅子情報が想定しているものと異なります",
+	ErrorCodeIncorrectChairNotificationData:                 "取得した椅子用の通知情報が想定しているものと異なります",
+	ErrorCodeIncorrectUserNotificationData:                  "取得したユーザー用の通知情報が想定しているものと異なります",
 }
 
 type codeError struct {

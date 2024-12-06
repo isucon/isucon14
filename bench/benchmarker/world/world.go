@@ -35,8 +35,8 @@ type World struct {
 	OwnerDB *GenericDB[OwnerID, *Owner]
 	// ChairDB 全椅子DB
 	ChairDB *GenericDB[ChairID, *Chair]
-	// RequestDB 全リクエストDB
-	RequestDB *RequestDB
+	// RideDB 全ライドDB
+	RideDB *RideDB
 	// PaymentDB 支払い結果DB
 	PaymentDB *PaymentDB
 	// Client webappへのクライアント
@@ -44,7 +44,7 @@ type World struct {
 	// RootRand ルートの乱数生成器
 	RootRand *rand.Rand
 	// CompletedRequestChan 完了したリクエストのチャンネル
-	CompletedRequestChan chan *Request
+	CompletedRequestChan chan *Ride
 	// ErrorCounter エラーカウンター
 	ErrorCounter *ErrorCounter
 	// EmptyChairs 空車椅子マップ
@@ -64,7 +64,7 @@ type World struct {
 	TimeoutTickCount int
 }
 
-func NewWorld(tickTimeout time.Duration, completedRequestChan chan *Request, client WorldClient, contestantLogger *slog.Logger) *World {
+func NewWorld(tickTimeout time.Duration, completedRequestChan chan *Ride, client WorldClient, contestantLogger *slog.Logger) *World {
 	return &World{
 		Regions: []*Region{
 			NewRegion("チェアタウン", 0, 0, 100, 100),
@@ -73,7 +73,7 @@ func NewWorld(tickTimeout time.Duration, completedRequestChan chan *Request, cli
 		UserDB:               NewGenericDB[UserID, *User](),
 		OwnerDB:              NewGenericDB[OwnerID, *Owner](),
 		ChairDB:              NewGenericDB[ChairID, *Chair](),
-		RequestDB:            NewRequestDB(),
+		RideDB:               NewRideDB(),
 		PaymentDB:            NewPaymentDB(),
 		Client:               client,
 		RootRand:             random.NewLockedRand(rand.NewPCG(0, 0)),
@@ -260,7 +260,7 @@ func (w *World) CreateOwner(ctx *Context, args *CreateOwnerArgs) (*Owner, error)
 		World:              w,
 		Region:             args.Region,
 		ChairDB:            concurrent.NewSimpleMap[ChairID, *Chair](),
-		CompletedRequest:   concurrent.NewSimpleSlice[*Request](),
+		CompletedRequest:   concurrent.NewSimpleSlice[*Ride](),
 		RegisteredData:     registeredData,
 		ChairModels:        PickModels(),
 		Client:             res.Client,
@@ -304,7 +304,7 @@ func (w *World) CreateChair(ctx *Context, args *CreateChairArgs) (*Chair, error)
 		RegisteredData:    registeredData,
 		Client:            res.Client,
 		Rand:              random.CreateChildRand(args.Owner.Rand),
-		RequestHistory:    concurrent.NewSimpleSlice[*Request](),
+		RideHistory:       concurrent.NewSimpleSlice[*Ride](),
 		notificationQueue: make(chan NotificationEvent, 500),
 	}
 	result := w.ChairDB.Create(c)
@@ -336,7 +336,7 @@ func (w *World) checkNearbyChairsResponse(baseTime time.Time, current Coordinate
 		if len(entries) == 0 {
 			return fmt.Errorf("ID:%sの椅子はレスポンスされた座標に過去存在したことがありません", chair.ID)
 		}
-		for _, req := range c.RequestHistory.BackwardIter() {
+		for _, req := range c.RideHistory.BackwardIter() {
 			if req.BenchMatchedAt.After(baseTime.Add(-3 * time.Second)) {
 				// nearbychairsのリクエストを送った3秒前以降にマッチされている場合は許容する
 				break
@@ -361,9 +361,9 @@ func (w *World) checkNearbyChairsResponse(baseTime time.Time, current Coordinate
 		checked[chair.ID] = true
 	}
 	for chair := range w.EmptyChairs.Iter() {
-		if !checked[chair.ServerID] && chair.matchingData == nil && chair.Request == nil && chair.ActivatedAt.Before(baseTime) {
+		if !checked[chair.ServerID] && chair.matchingData == nil && chair.Ride == nil && chair.ActivatedAt.Before(baseTime) {
 			ok := false
-			for _, req := range chair.RequestHistory.BackwardIter() {
+			for _, req := range chair.RideHistory.BackwardIter() {
 				// baseTimeよりも3秒前以降に完了状態に遷移している場合は、含まれていなくても許容する
 				if req.ServerCompletedAt.After(baseTime.Add(-3 * time.Second)) {
 					ok = true
