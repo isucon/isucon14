@@ -81,7 +81,8 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	if failurePercentage > 50 {
 		failurePercentage = 50
 	}
-	if rand.IntN(100) > failurePercentage {
+	failureCount, _ := s.failureCounts.GetOrSetDefault(token, func() int { return 0 })
+	if rand.IntN(100) > failurePercentage || failureCount >= 4 {
 		// lock はここでしか触らない。lock が true の場合は idempotency key が同じリクエストが処理中の場合のみ
 		if p.locked.CompareAndSwap(false, true) {
 			alreadyProcessed := false
@@ -100,8 +101,11 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				s.processedPayments.Append(&processedPayment{payment: p, processedAt: time.Now()})
 				p.locked.Store(false)
+				s.failureCounts.Delete(token)
 			}
 		}
+	} else {
+		s.failureCounts.Set(token, failureCount+1)
 	}
 
 	// 不安定なエラーを再現
