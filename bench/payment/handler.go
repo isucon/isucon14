@@ -70,16 +70,12 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	failureCount, _ := s.failureCounts.GetOrSetDefault(token, func() int { return 0 })
 	if p.locked.CompareAndSwap(false, true) {
+		defer p.locked.Store(false)
+
 		if failureCount >= 1 {
 			alreadyProcessed := false
 			if !newPayment {
-				alreadyProcessedIdks := map[string]struct{}{}
 				for _, processed := range s.processedPayments.ToSlice() {
-					_, exist := alreadyProcessedIdks[processed.payment.IdempotencyKey]
-					if exist {
-						slog.Error("idempotency key が重複しています", "idk", processed.payment.IdempotencyKey)
-					}
-					alreadyProcessedIdks[processed.payment.IdempotencyKey] = struct{}{}
 					if processed.payment.IdempotencyKey == p.IdempotencyKey {
 						alreadyProcessed = true
 						break
@@ -95,7 +91,6 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 					s.errChan <- p.Status.Err
 				}
 				s.failureCounts.Delete(token)
-				p.locked.Store(false) // idenpotency key が同じリクエストが来たときにエラーを返さないように
 			}
 			writeResponse(w, p.Status)
 			return
