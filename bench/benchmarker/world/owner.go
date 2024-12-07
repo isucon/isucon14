@@ -176,7 +176,18 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 			return fmt.Errorf("nameが一致しないデータがあります (id: %s, got: %s, want: %s)", chair.ID, chair.Name, sales.Name)
 		}
 		if sales.Sales != chair.Sales {
-			return fmt.Errorf("salesがずれているデータがあります (id: %s, got: %d, want: %d)", chair.ID, chair.Sales, sales.Sales)
+			reqs := []*Request{}
+			for _, r := range p.CompletedRequest.Iter() {
+				if r.Chair.ServerID != chair.ID {
+					continue
+				}
+				reqs = append(reqs, r)
+			}
+			reqsMessage := ""
+			for _, r := range reqs {
+				reqsMessage += fmt.Sprintf(" (%s, %d) ", r.ServerID, r.Sales())
+			}
+			return fmt.Errorf("salesがずれているデータがあります (id: %s, got: %d, want: %d), (req.ID, req.Fare) = %s", chair.ID, chair.Sales, sales.Sales, reqsMessage)
 		}
 	}
 
