@@ -68,6 +68,39 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		p.Amount = req.Amount
 	}
 
+	if p.locked.CompareAndSwap(false, true) {
+		alreadyProcessed := false
+		if !newPayment {
+			alreadyProcessedIdks := map[string]struct{}{}
+			for _, processed := range s.processedPayments.ToSlice() {
+				_, exist := alreadyProcessedIdks[processed.payment.IdempotencyKey]
+				if exist {
+					slog.Error("idempotency key が重複しています", "idk", processed.payment.IdempotencyKey)
+				}
+				alreadyProcessedIdks[processed.payment.IdempotencyKey] = struct{}{}
+				if processed.payment.IdempotencyKey == p.IdempotencyKey {
+					alreadyProcessed = true
+					break
+				}
+			}
+		}
+		if !alreadyProcessed {
+			p.Status = s.verifier.Verify(p)
+			if p.Status.Type == StatusSuccess {
+				s.processedPayments.Append(&processedPayment{payment: p, processedAt: time.Now()})
+			}
+			if p.Status.Err != nil {
+				s.errChan <- p.Status.Err
+			}
+			s.failureCounts.Delete(token)
+			p.locked.Store(false) // idenpotency key が同じリクエストが来たときにエラーを返さないように
+		}
+		writeResponse(w, p.Status)
+		return
+	}
+	writeRandomError(w)
+	return
+
 	time.Sleep(s.processTime)
 	// (直近3秒で処理された payment の数) / 100 の確率で処理を失敗させる(最大50%)
 	var recentProcessedCount int
