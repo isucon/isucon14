@@ -44,23 +44,33 @@ const currentCoodinatePost = async (coordinate: Coordinate) => {
   }));
 };
 
-const postEnroute = (rideId: string, coordinate: Coordinate) => {
+const postEnroute = (
+  rideId: string,
+  coordinate: Coordinate,
+  abortSignal: AbortSignal,
+) => {
   setSimulatorStartCoordinate(coordinate);
-  void fetchChairPostRideStatus({
-    body: { status: "ENROUTE" },
-    pathParams: {
-      rideId,
+  void fetchChairPostRideStatus(
+    {
+      body: { status: "ENROUTE" },
+      pathParams: {
+        rideId,
+      },
     },
-  });
+    abortSignal,
+  );
 };
 
-const postCarring = (rideId: string) => {
-  void fetchChairPostRideStatus({
-    body: { status: "CARRYING" },
-    pathParams: {
-      rideId,
+const postCarring = (rideId: string, abortSignal: AbortSignal) => {
+  void fetchChairPostRideStatus(
+    {
+      body: { status: "CARRYING" },
+      pathParams: {
+        rideId,
+      },
     },
-  });
+    abortSignal,
+  );
 };
 
 const forcePickup = (pickup_coordinate: Coordinate) =>
@@ -68,12 +78,16 @@ const forcePickup = (pickup_coordinate: Coordinate) =>
     void currentCoodinatePost(pickup_coordinate);
   }, 60_000);
 
-const forceCarry = (pickup_coordinate: Coordinate, rideId: RideId) =>
+const forceCarry = (
+  pickup_coordinate: Coordinate,
+  rideId: RideId,
+  abortSignal: AbortSignal,
+) =>
   setTimeout(() => {
     try {
       void (async () => {
         void (await currentCoodinatePost(pickup_coordinate));
-        postCarring(rideId);
+        postCarring(rideId, abortSignal);
       })();
     } catch (error) {
       console.error(error);
@@ -90,21 +104,30 @@ export const useEmulator = () => {
     useSimulatorContext();
   const { pickup_coordinate, destination_coordinate, ride_id, status } =
     data ?? {};
+  const currentCoordinate = chair?.coordinate;
+
   useEffect(() => {
+    if (!isAnotherSimulatorBeingUsed) return;
     if (!(pickup_coordinate && destination_coordinate && ride_id)) return;
     let timeoutId: ReturnType<typeof setTimeout>;
+    const abortController = new AbortController();
     switch (status) {
       case "ENROUTE":
         timeoutId = forcePickup(pickup_coordinate);
         break;
       case "PICKUP":
-        timeoutId = forceCarry(pickup_coordinate, ride_id);
+        timeoutId = forceCarry(
+          pickup_coordinate,
+          ride_id,
+          abortController.signal,
+        );
         break;
       case "CARRYING":
         timeoutId = forceArrive(destination_coordinate);
         break;
     }
     return () => {
+      abortController.abort();
       clearTimeout(timeoutId);
     };
   }, [
@@ -127,20 +150,41 @@ export const useEmulator = () => {
 
   useEffect(() => {
     if (isAnotherSimulatorBeingUsed) return;
+    if (!ride_id || status !== "PICKUP") return;
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(
+      () => postCarring(ride_id, abortController.signal),
+      1000,
+    );
+    return () => {
+      clearTimeout(timeoutId);
+      abortController.abort();
+    };
+  }, [status, ride_id, isAnotherSimulatorBeingUsed]);
+
+  useEffect(() => {
+    if (isAnotherSimulatorBeingUsed) return;
+    if (!ride_id || !currentCoordinate || status !== "MATCHING") return;
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(
+      () => postEnroute(ride_id, currentCoordinate, abortController.signal),
+      1000,
+    );
+    return () => {
+      clearTimeout(timeoutId);
+      abortController.abort();
+    };
+  }, [status, ride_id, currentCoordinate, isAnotherSimulatorBeingUsed]);
+
+  useEffect(() => {
+    if (isAnotherSimulatorBeingUsed) return;
     if (!(chair && data)) {
       return;
     }
-
     const timeoutId = setTimeout(() => {
       void currentCoodinatePost(chair.coordinate);
       try {
         switch (data.status) {
-          case "MATCHING":
-            postEnroute(data.ride_id, chair.coordinate);
-            break;
-          case "PICKUP":
-            postCarring(data.ride_id);
-            break;
           case "ENROUTE":
             setCoordinate?.(move(chair.coordinate, data.pickup_coordinate));
             break;
@@ -149,8 +193,6 @@ export const useEmulator = () => {
               move(chair.coordinate, data.destination_coordinate),
             );
             break;
-          case "ARRIVED":
-            setCoordinate?.(data.destination_coordinate);
         }
       } catch (e) {
         // statusの更新タイミングの都合で到着状態を期待しているが必ず取れるとは限らない
