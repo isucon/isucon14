@@ -95,13 +95,14 @@ func (p *Owner) Tick(ctx *Context) error {
 				return WrapCodeError(ErrorCodeFailedToGetOwnerChairs, err)
 			}
 
+			completedRequestsSnapshot := p.CompletedRequest.ToSlice()
 			res, err := p.Client.GetOwnerSales(ctx, &GetOwnerSalesRequest{
 				Until: last.ServerCompletedAt,
 			})
 			if err != nil {
 				return WrapCodeError(ErrorCodeFailedToGetOwnerSales, err)
 			}
-			if err := p.ValidateSales(last.ServerCompletedAt, res); err != nil {
+			if err := p.ValidateSales(last.ServerCompletedAt, res, completedRequestsSnapshot); err != nil {
 				return WrapCodeError(ErrorCodeSalesMismatched, err)
 			}
 			if increase := desiredChairNum(res.Total) - p.createChairTryCount; increase > 0 {
@@ -131,8 +132,7 @@ func (p *Owner) AddChair(c *Chair) {
 	p.chairCountPerModel[c.Model]++
 }
 
-func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse) error {
-	totals := 0
+func (p *Owner) getExpectedSalesPerChairsOrModels(completedRequests []*Request, until time.Time) (map[string]*ChairSales, map[string]*ChairSalesPerModel) {
 	perChairs := lo.Associate(p.ChairDB.ToSlice(), func(c *Chair) (string, *ChairSales) {
 		return c.ServerID, &ChairSales{
 			ID:    c.ServerID,
@@ -143,7 +143,8 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 	perModels := lo.MapEntries(p.chairCountPerModel, func(m *ChairModel, _ int) (string, *ChairSalesPerModel) {
 		return m.Name, &ChairSalesPerModel{Model: m.Name}
 	})
-	for _, r := range p.CompletedRequest.Iter() {
+
+	for _, r := range completedRequests {
 		if r.ServerCompletedAt.After(until) {
 			continue
 		}
@@ -160,8 +161,15 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 		fare := r.Sales()
 		cs.Sales += fare
 		cspm.Sales += fare
-		totals += fare
 	}
+
+	return perChairs, perModels
+}
+
+func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse, snapshot []*Request) error {
+	totals := 0
+	perChairsAtSnapshot, perModelsAtSnapshot := p.getExpectedSalesPerChairsOrModels(snapshot, until)
+	perChairs, perModels := p.getExpectedSalesPerChairsOrModels(p.CompletedRequest.ToSlice(), until)
 
 	// 椅子毎の売り上げ検証
 	if p.ChairDB.Len() != len(serverSide.Chairs) {
@@ -175,7 +183,13 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 		if sales.Name != chair.Name {
 			return fmt.Errorf("nameが一致しないデータがあります (id: %s, got: %s, want: %s)", chair.ID, chair.Name, sales.Name)
 		}
-		if sales.Sales != chair.Sales {
+
+		minSales, ok := perChairsAtSnapshot[chair.ID]
+		if !ok {
+			// TODO: これエラーにしていい？
+			return fmt.Errorf("期待していない椅子による売り上げが存在します (id: %s)", chair.ID)
+		}
+		if chair.Sales < minSales.Sales || sales.Sales < chair.Sales {
 			reqs := []*Request{}
 			for _, r := range p.CompletedRequest.Iter() {
 				if r.Chair.ServerID != chair.ID {
@@ -200,7 +214,12 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 		if !ok {
 			return fmt.Errorf("期待していない椅子モデルによる売り上げが存在します (id: %s)", model.Model)
 		}
-		if sales.Sales != model.Sales {
+		minSales, ok := perModelsAtSnapshot[model.Model]
+		if !ok {
+			// TODO: これエラーにしていい？
+			return fmt.Errorf("期待していない椅子モデルによる売り上げが存在します (id: %s)", model.Model)
+		}
+		if model.Sales < minSales.Sales || sales.Sales < model.Sales {
 			return fmt.Errorf("salesがずれているデータがあります (model: %s, got: %d, want: %d)", model.Model, sales.Sales, model.Sales)
 		}
 	}
