@@ -2,9 +2,10 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
+use futures_util::Stream;
 use ulid::Ulid;
 
-use crate::models::{Chair, ChairLocation, Owner, Ride, RideStatus, User};
+use crate::models::{Chair, ChairLocation, Owner, Ride, User};
 use crate::{AppState, Coordinate, Error};
 
 pub fn chair_routes(app_state: AppState) -> axum::Router<AppState> {
@@ -185,12 +186,6 @@ struct SimpleUser {
 }
 
 #[derive(Debug, serde::Serialize)]
-struct ChairGetNotificationResponse {
-    data: Option<ChairGetNotificationResponseData>,
-    retry_after_ms: Option<i32>,
-}
-
-#[derive(Debug, serde::Serialize)]
 struct ChairGetNotificationResponseData {
     ride_id: String,
     user: SimpleUser,
@@ -202,53 +197,37 @@ struct ChairGetNotificationResponseData {
 async fn chair_get_notification(
     State(AppState { pool, .. }): State<AppState>,
     axum::Extension(chair): axum::Extension<Chair>,
-) -> Result<axum::Json<ChairGetNotificationResponse>, Error> {
-    let mut tx = pool.begin().await?;
+) -> axum::response::Sse<impl Stream<Item = Result<axum::response::sse::Event, Error>>> {
+    async fn f(
+        pool: &sqlx::MySqlPool,
+        chair_id: &str,
+        last_ride_id: &mut String,
+        last_ride_status: &mut String,
+    ) -> Result<Option<ChairGetNotificationResponseData>, Error> {
+        let mut tx = pool.begin().await?;
 
-    let Some(ride): Option<Ride> =
-        sqlx::query_as("SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1")
-            .bind(&chair.id)
-            .fetch_optional(&mut *tx)
-            .await?
-    else {
-        return Ok(axum::Json(ChairGetNotificationResponse {
-            data: None,
-            retry_after_ms: Some(30),
-        }));
-    };
-
-    let yet_sent_ride_status: Option<RideStatus> =
-        sqlx::query_as("SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1")
-        .bind(&ride.id)
-        .fetch_optional(&mut *tx)
-        .await?;
-    let (yet_sent_ride_status_id, status) = if let Some(yet_sent_ride_status) = yet_sent_ride_status
-    {
-        (Some(yet_sent_ride_status.id), yet_sent_ride_status.status)
-    } else {
-        (
-            None,
-            crate::get_latest_ride_status(&mut *tx, &ride.id).await?,
+        let Some(ride): Option<Ride> = sqlx::query_as(
+            "SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1",
         )
-    };
+        .bind(chair_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            return Ok(None);
+        };
 
-    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ? FOR SHARE")
-        .bind(ride.user_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let status = crate::get_latest_ride_status(&mut *tx, &ride.id).await?;
+        if ride.id == *last_ride_id && status == *last_ride_status {
+            return Ok(None);
+        }
 
-    if let Some(yet_sent_ride_status_id) = yet_sent_ride_status_id {
-        sqlx::query("UPDATE ride_statuses SET chair_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?")
-            .bind(yet_sent_ride_status_id)
-            .execute(&mut *tx)
+        let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ? FOR SHARE")
+            .bind(ride.user_id)
+            .fetch_one(&mut *tx)
             .await?;
-    }
 
-    tx.commit().await?;
-
-    Ok(axum::Json(ChairGetNotificationResponse {
-        data: Some(ChairGetNotificationResponseData {
-            ride_id: ride.id,
+        let data = ChairGetNotificationResponseData {
+            ride_id: ride.id.clone(),
             user: SimpleUser {
                 id: user.id,
                 name: format!("{} {}", user.firstname, user.lastname),
@@ -261,10 +240,38 @@ async fn chair_get_notification(
                 latitude: ride.destination_latitude,
                 longitude: ride.destination_longitude,
             },
-            status,
-        }),
-        retry_after_ms: Some(30),
-    }))
+            status: status.clone(),
+        };
+        *last_ride_id = ride.id;
+        *last_ride_status = status;
+        Ok(Some(data))
+    }
+
+    let stream = futures_util::stream::try_unfold(
+        ("".to_owned(), "".to_owned()),
+        move |(mut last_ride_id, mut last_ride_status)| {
+            let pool = pool.clone();
+            let chair_id = chair.id.clone();
+            async move {
+                loop {
+                    if let Some(data) =
+                        f(&pool, &chair_id, &mut last_ride_id, &mut last_ride_status).await?
+                    {
+                        return Ok(Some((
+                            axum::response::sse::Event::default()
+                                .json_data(data)
+                                .unwrap(),
+                            (last_ride_id, last_ride_status),
+                        )));
+                    } else {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                }
+            }
+        },
+    );
+
+    axum::response::Sse::new(stream)
 }
 
 #[derive(Debug, serde::Deserialize)]
