@@ -87,7 +87,13 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		if p.locked.CompareAndSwap(false, true) {
 			alreadyProcessed := false
 			if !newPayment {
+				alreadyProcessedIdks := map[string]struct{}{}
 				for _, processed := range s.processedPayments.ToSlice() {
+					_, exist := alreadyProcessedIdks[processed.payment.IdempotencyKey]
+					if exist {
+						slog.Error("idempotency key が重複しています", "idk", processed.payment.IdempotencyKey)
+					}
+					alreadyProcessedIdks[processed.payment.IdempotencyKey] = struct{}{}
 					if processed.payment.IdempotencyKey == p.IdempotencyKey {
 						alreadyProcessed = true
 						break
