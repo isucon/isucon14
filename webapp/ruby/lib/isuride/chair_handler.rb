@@ -103,28 +103,31 @@ module Isuride
 
     # GET /api/chair/notification
     get '/notification' do
-      response = db_transaction do |tx|
-        ride = tx.xquery('SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1', @current_chair.id).first
-        unless ride
-          halt json(data: nil, retry_after_ms: 30)
-        end
+      content_type 'text/event-stream'
 
-        yet_sent_ride_status = tx.xquery('SELECT * FROM ride_statuses WHERE ride_id = ? AND chair_sent_at IS NULL ORDER BY created_at ASC LIMIT 1', ride.fetch(:id)).first
-        status =
-          if yet_sent_ride_status.nil?
-            get_latest_ride_status(tx, ride.fetch(:id))
-          else
-            yet_sent_ride_status.fetch(:status)
+      stream do |out|
+        last_ride = nil
+        last_ride_status = nil
+
+        until out.closed?
+          ride = db.xquery('SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1', @current_chair.id).first
+          unless ride
+            sleep(0.1)
+            next
           end
 
-        user = tx.xquery('SELECT * FROM users WHERE id = ? FOR SHARE', ride.fetch(:user_id)).first
+          status = get_latest_ride_status(db, ride.fetch(:id))
+          if !last_ride.nil? && ride.fetch(:id) == last_ride.fetch(:id) && status == last_ride_status
+            sleep(0.1)
+            next
+          end
 
-        unless yet_sent_ride_status.nil?
-          tx.xquery('UPDATE ride_statuses SET chair_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?', yet_sent_ride_status.fetch(:id))
-        end
+          user = db.xquery('SELECT * FROM users WHERE id = ? FOR SHARE', ride.fetch(:user_id)).first
 
-        {
-          data: {
+          last_ride = ride
+          last_ride_status = status
+
+          data = {
             ride_id: ride.fetch(:id),
             user: {
               id: user.fetch(:id),
@@ -139,12 +142,11 @@ module Isuride
               longitude: ride.fetch(:destination_longitude),
             },
             status:,
-          },
-          retry_after_ms: 30,
-        }
-      end
+          }
 
-      json(response)
+          out << "data: #{JSON.dump(data)}\n\n"
+        end
+      end
     end
 
     PostChairRidesRideIDStatusRequest = Data.define(:status)
