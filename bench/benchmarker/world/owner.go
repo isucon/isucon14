@@ -220,7 +220,7 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 			return fmt.Errorf("期待していない椅子モデルによる売り上げが存在します (id: %s)", model.Model)
 		}
 		if model.Sales < minSales.Sales || sales.Sales < model.Sales {
-			return fmt.Errorf("salesがずれているデータがあります (model: %s, got: %d, want: %d)", model.Model, sales.Sales, model.Sales)
+			return fmt.Errorf("salesがずれているデータがあります (model: %s, got: %d, want(min): %d, want(max): %d)", model.Model, model.Sales, minSales.Sales, sales.Sales)
 		}
 	}
 
