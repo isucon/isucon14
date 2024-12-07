@@ -132,7 +132,8 @@ func (p *Owner) AddChair(c *Chair) {
 	p.chairCountPerModel[c.Model]++
 }
 
-func (p *Owner) getExpectedSalesPerChairsOrModels(completedRequests []*Request, until time.Time) (map[string]*ChairSales, map[string]*ChairSalesPerModel) {
+func (p *Owner) getExpectedSalesPerChairsOrModels(completedRequests []*Request, until time.Time) (map[string]*ChairSales, map[string]*ChairSalesPerModel, int) {
+	var total int
 	perChairs := lo.Associate(p.ChairDB.ToSlice(), func(c *Chair) (string, *ChairSales) {
 		return c.ServerID, &ChairSales{
 			ID:    c.ServerID,
@@ -161,15 +162,16 @@ func (p *Owner) getExpectedSalesPerChairsOrModels(completedRequests []*Request, 
 		fare := r.Sales()
 		cs.Sales += fare
 		cspm.Sales += fare
+		total += fare
 	}
 
-	return perChairs, perModels
+	return perChairs, perModels, total
 }
 
 func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse, snapshot []*Request) error {
-	totals := 0
-	perChairsAtSnapshot, perModelsAtSnapshot := p.getExpectedSalesPerChairsOrModels(snapshot, until)
-	perChairs, perModels := p.getExpectedSalesPerChairsOrModels(p.CompletedRequest.ToSlice(), until)
+
+	perChairsAtSnapshot, perModelsAtSnapshot, totalsAtSnapshot := p.getExpectedSalesPerChairsOrModels(snapshot, until)
+	perChairs, perModels, totals := p.getExpectedSalesPerChairsOrModels(p.CompletedRequest.ToSlice(), until)
 
 	// 椅子毎の売り上げ検証
 	if p.ChairDB.Len() != len(serverSide.Chairs) {
@@ -225,8 +227,8 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 	}
 
 	// Totalの検証
-	if totals != serverSide.Total {
-		return fmt.Errorf("total_salesがズレています (got: %d, want: %d)", serverSide.Total, totals)
+	if totals < totalsAtSnapshot || serverSide.Total < totals || serverSide.Total < totalsAtSnapshot {
+		return fmt.Errorf("total_salesがズレています (got: %d, want(min): %d, want(max): %d)", serverSide.Total, totalsAtSnapshot, totals)
 	}
 
 	return nil
