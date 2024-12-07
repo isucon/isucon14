@@ -25,6 +25,8 @@ const (
 	_
 	// ErrorCodeFailedToEvaluate ユーザーが送迎の評価をしようとしたが失敗した
 	ErrorCodeFailedToEvaluate
+	// ErrorCodeEvaluateTimeout ユーザーが送迎の評価をしようとしたがタイムアウトした
+	ErrorCodeEvaluateTimeout
 	// ErrorCodeFailedToCheckRequestHistory ユーザーがリクエスト履歴を確認しようとしたが失敗した
 	ErrorCodeFailedToCheckRequestHistory
 	// ErrorCodeFailedToCreateRequest ユーザーがリクエストを作成しようとしたが失敗した
@@ -88,6 +90,7 @@ var CriticalErrorCodes = map[ErrorCode]bool{
 	ErrorCodeIncorrectAmountOfFareCharged:                   true,
 	ErrorCodeUncontrollableRequestReceived:                  true,
 	ErrorCodeMatchingTimeout:                                true,
+	ErrorCodeEvaluateTimeout:                                true,
 }
 
 var ErrorTexts = map[ErrorCode]string{
@@ -95,6 +98,7 @@ var ErrorTexts = map[ErrorCode]string{
 	ErrorCodeFailedToDepart:                                 "椅子が出発できませんでした",
 	ErrorCodeFailedToAcceptRequest:                          "椅子がライドを受理できませんでした",
 	ErrorCodeFailedToEvaluate:                               "ユーザーのライド評価に失敗しました",
+	ErrorCodeEvaluateTimeout:                                "ユーザーのライド評価がタイムアウトしました",
 	ErrorCodeFailedToCheckRequestHistory:                    "ユーザーがライド履歴の取得に失敗しました",
 	ErrorCodeFailedToCreateRequest:                          "ユーザーが新しくライドを作成できませんでした",
 	ErrorCodeUserNotRequestingButStatusChanged:              "ユーザーが想定していない通知を受け取りました",

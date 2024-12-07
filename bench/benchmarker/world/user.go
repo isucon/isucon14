@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -175,6 +176,9 @@ func (u *User) Tick(ctx *Context) error {
 				res, err := u.Client.SendEvaluation(ctx, u.Request, score)
 				if err != nil {
 					u.Request.Statuses.Unlock()
+					if errors.Is(err, context.DeadlineExceeded) {
+						return WrapCodeError(ErrorCodeEvaluateTimeout, err)
+					}
 					return WrapCodeError(ErrorCodeFailedToEvaluate, err)
 				}
 
