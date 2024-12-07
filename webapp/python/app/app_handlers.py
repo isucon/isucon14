@@ -587,7 +587,7 @@ class AppGetNotificationResponse(BaseModel):
 
 
 @router.get(
-    "/notification",
+    "/notification_test",
     response_model=AppGetNotificationResponse,
     status_code=HTTPStatus.OK,
     response_model_exclude_none=True,

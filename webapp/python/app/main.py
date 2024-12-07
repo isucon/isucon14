@@ -9,7 +9,13 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from . import app_handlers, chair_handlers, internal_handlers, owner_handlers
+from . import (
+    app_handlers,
+    chair_handlers,
+    internal_handlers,
+    owner_handlers,
+    sse_handlers,
+)
 from .sql import engine
 
 app = FastAPI()
@@ -17,6 +23,7 @@ app.include_router(app_handlers.router)
 app.include_router(chair_handlers.router)
 app.include_router(internal_handlers.router)
 app.include_router(owner_handlers.router)
+app.include_router(sse_handlers.router)
 
 
 class PostInitializeRequest(BaseModel):
