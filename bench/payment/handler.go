@@ -70,7 +70,7 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	failureCount, _ := s.failureCounts.GetOrSetDefault(token, func() int { return 0 })
 	if p.locked.CompareAndSwap(false, true) {
-		if failureCount >= 4 {
+		if failureCount >= 0 {
 			alreadyProcessed := false
 			if !newPayment {
 				alreadyProcessedIdks := map[string]struct{}{}
