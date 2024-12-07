@@ -95,13 +95,14 @@ func (p *Owner) Tick(ctx *Context) error {
 				return WrapCodeError(ErrorCodeFailedToGetOwnerChairs, err)
 			}
 
+			completedRequestsSnapshot := p.CompletedRequest.ToSlice()
 			res, err := p.Client.GetOwnerSales(ctx, &GetOwnerSalesRequest{
 				Until: last.ServerCompletedAt,
 			})
 			if err != nil {
 				return WrapCodeError(ErrorCodeFailedToGetOwnerSales, err)
 			}
-			if err := p.ValidateSales(last.ServerCompletedAt, res); err != nil {
+			if err := p.ValidateSales(last.ServerCompletedAt, res, completedRequestsSnapshot); err != nil {
 				return WrapCodeError(ErrorCodeSalesMismatched, err)
 			}
 			if increase := desiredChairNum(res.Total) - p.createChairTryCount; increase > 0 {
@@ -131,8 +132,8 @@ func (p *Owner) AddChair(c *Chair) {
 	p.chairCountPerModel[c.Model]++
 }
 
-func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse) error {
-	totals := 0
+func (p *Owner) getExpectedSalesPerChairsOrModels(completedRequests []*Request, until time.Time) (map[string]*ChairSales, map[string]*ChairSalesPerModel, int) {
+	var total int
 	perChairs := lo.Associate(p.ChairDB.ToSlice(), func(c *Chair) (string, *ChairSales) {
 		return c.ServerID, &ChairSales{
 			ID:    c.ServerID,
@@ -143,7 +144,8 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 	perModels := lo.MapEntries(p.chairCountPerModel, func(m *ChairModel, _ int) (string, *ChairSalesPerModel) {
 		return m.Name, &ChairSalesPerModel{Model: m.Name}
 	})
-	for _, r := range p.CompletedRequest.Iter() {
+
+	for _, r := range completedRequests {
 		if r.ServerCompletedAt.After(until) {
 			continue
 		}
@@ -160,8 +162,15 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 		fare := r.Sales()
 		cs.Sales += fare
 		cspm.Sales += fare
-		totals += fare
+		total += fare
 	}
+
+	return perChairs, perModels, total
+}
+
+func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse, snapshot []*Request) error {
+	perChairsAtSnapshot, perModelsAtSnapshot, totalsAtSnapshot := p.getExpectedSalesPerChairsOrModels(snapshot, until)
+	perChairs, perModels, totals := p.getExpectedSalesPerChairsOrModels(p.CompletedRequest.ToSlice(), until)
 
 	// 椅子毎の売り上げ検証
 	if p.ChairDB.Len() != len(serverSide.Chairs) {
@@ -175,8 +184,14 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 		if sales.Name != chair.Name {
 			return fmt.Errorf("nameが一致しないデータがあります (id: %s, got: %s, want: %s)", chair.ID, chair.Name, sales.Name)
 		}
-		if sales.Sales != chair.Sales {
-			return fmt.Errorf("salesがずれているデータがあります (id: %s, got: %d, want: %d)", chair.ID, chair.Sales, sales.Sales)
+
+		// 期待していない椅子の売り上げは0として扱う
+		minSales := perChairsAtSnapshot[chair.ID]
+		if chair.Sales < minSales.Sales {
+			return fmt.Errorf("salesが小さいデータがあります (id: %s, got: %d)", chair.ID, chair.Sales)
+		}
+		if sales.Sales < chair.Sales {
+			return fmt.Errorf("salesが大きいデータがあります (id: %s, got: %d)", chair.ID, chair.Sales)
 		}
 	}
 
@@ -189,14 +204,22 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 		if !ok {
 			return fmt.Errorf("期待していない椅子モデルによる売り上げが存在します (id: %s)", model.Model)
 		}
-		if sales.Sales != model.Sales {
-			return fmt.Errorf("salesがずれているデータがあります (model: %s, got: %d, want: %d)", model.Model, sales.Sales, model.Sales)
+		// 期待していない椅子モデルの売り上げは0として扱う
+		minSales := perModelsAtSnapshot[model.Model]
+		if model.Sales < minSales.Sales {
+			return fmt.Errorf("salesが小さいデータがあります (model: %s, got: %d)", model.Model, model.Sales)
+		}
+		if sales.Sales < model.Sales {
+			return fmt.Errorf("salesが大きいデータがあります (model: %s, got: %d)", model.Model, model.Sales)
 		}
 	}
 
 	// Totalの検証
-	if totals != serverSide.Total {
-		return fmt.Errorf("total_salesがズレています (got: %d, want: %d)", serverSide.Total, totals)
+	if serverSide.Total < totalsAtSnapshot {
+		return fmt.Errorf("totalが小さいデータがあります (got: %d)", serverSide.Total)
+	}
+	if totals < serverSide.Total {
+		return fmt.Errorf("totalが大きいデータがあります (got: %d)", serverSide.Total)
 	}
 
 	return nil

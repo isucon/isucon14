@@ -22,15 +22,17 @@ async fn main() -> anyhow::Result<()> {
     let password = std::env::var("ISUCON_DB_PASSWORD").unwrap_or_else(|_| "isucon".to_owned());
     let dbname = std::env::var("ISUCON_DB_NAME").unwrap_or_else(|_| "isuride".to_owned());
 
-    let pool = sqlx::MySqlPool::connect_with(
-        sqlx::mysql::MySqlConnectOptions::default()
-            .host(&host)
-            .port(port)
-            .username(&user)
-            .password(&password)
-            .database(&dbname),
-    )
-    .await?;
+    let pool = sqlx::mysql::MySqlPoolOptions::new()
+        .max_connections(50)
+        .connect_with(
+            sqlx::mysql::MySqlConnectOptions::default()
+                .host(&host)
+                .port(port)
+                .username(&user)
+                .password(&password)
+                .database(&dbname),
+        )
+        .await?;
 
     let app_state = AppState { pool };
 

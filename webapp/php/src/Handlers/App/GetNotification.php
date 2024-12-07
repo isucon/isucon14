@@ -47,7 +47,7 @@ class GetNotification extends AbstractHttpHandler
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$result) {
                 $this->db->rollBack();
-                return $this->writeJson($response, new AppGetNotification200Response());
+                return $this->writeJson($response, new AppGetNotification200Response(['retry_after_ms' => 30]));
             }
             $ride = new Ride(
                 id: $result['id'],
@@ -152,7 +152,7 @@ class GetNotification extends AbstractHttpHandler
                 $stmt->execute([$yetSentRideStatus['id']]);
             }
             $this->db->commit();
-            return $this->writeJson($response, new AppGetNotification200Response(['data' => $res]));
+            return $this->writeJson($response, new AppGetNotification200Response(['data' => $res, 'retry_after_ms' => 30]));
         } catch (PDOException $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();

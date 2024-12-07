@@ -2,7 +2,6 @@ import type {
   OwnerGetChairsResponse,
   OwnerGetSalesResponse,
 } from "./api/api-components";
-import type { Coordinate as ApiCoodinate } from "./api/api-schemas";
 
 export type AccessToken = string;
 
@@ -16,10 +15,11 @@ export type ClientAppChair = {
   }>;
 };
 
-export type DisplayPos = {
-  x: number;
-  y: number;
-};
+export type Coordinate = { latitude: number; longitude: number };
+
+export type DisplayPos = { x: number; y: number };
+
+export type Distance = { horizontalDistance: number; verticalDistance: number };
 
 export type NearByChair = {
   id: string;
@@ -27,8 +27,6 @@ export type NearByChair = {
   model: string;
   current_coordinate: Coordinate;
 };
-
-export type Coordinate = ApiCoodinate;
 
 export type CampaignData = {
   invitationCode: string;

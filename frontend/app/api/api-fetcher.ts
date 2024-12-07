@@ -87,6 +87,10 @@ export async function apiFetch<
       throw error;
     }
 
+    if (response.status === 204) {
+      return undefined as unknown as TData;
+    }
+
     if (response.headers.get("content-type")?.includes("json")) {
       return await response.json();
     } else {

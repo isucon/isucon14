@@ -16,7 +16,7 @@ import {
 import { OwnerChairs, OwnerSales } from "~/types";
 import { getCookieValue } from "~/utils/get-cookie-value";
 
-type DateString = `${number}-${number}-${number}`; // YYYY-MM-DD
+type DateString = `${number}-${number}-${number}`; // yyyy-mm-dd
 
 type OwnerContextProps = Partial<{
   chairs?: OwnerChairs;
@@ -43,22 +43,24 @@ const currentDateString: DateString = (() => {
   return today.toISOString().slice(0, 10) as DateString;
 })();
 
+const isValidDateString = (value: string): value is DateString => {
+  return /\d{4}-\d{2}-\d{2}/.test(value);
+};
+
 export const OwnerProvider = ({ children }: { children: ReactNode }) => {
   const [chairs, setChairs] = useState<OwnerGetChairsResponse["chairs"]>();
   const [sales, setSales] = useState<OwnerGetSalesResponse>();
   const navigate = useNavigate();
+  const [since, _setSince] = useState("2024-11-01" as DateString);
   const [until, _setUntil] = useState(currentDateString);
-  const [since, _setSince] = useState(currentDateString);
-
-  const setUntil = useCallback((value: string) => {
-    if (/\d{4}-\d{2}-\d{2}/.test(value)) {
-      _setUntil(value as DateString);
+  const setSince = useCallback((value: string) => {
+    if (isValidDateString(value)) {
+      _setSince(value);
     }
   }, []);
-
-  const setSince = useCallback((value: string) => {
-    if (/\d{4}-\d{2}-\d{2}/.test(value)) {
-      _setSince(value as DateString);
+  const setUntil = useCallback((value: string) => {
+    if (isValidDateString(value)) {
+      _setUntil(value);
     }
   }, []);
 

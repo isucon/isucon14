@@ -69,6 +69,9 @@ type World struct {
 	InvitedUserCount atomic.Int32
 	// NotInvitedUserCount 招待されずに登録したユーザーの数
 	NotInvitedUserCount atomic.Int32
+
+	// 負荷走行完了
+	finished atomic.Bool
 }
 
 func NewWorld(tickTimeout time.Duration, completedRequestChan chan *Request, client WorldClient, contestantLogger *slog.Logger) *World {
@@ -341,7 +344,7 @@ func (w *World) checkNearbyChairsResponse(baseTime time.Time, current Coordinate
 			return fmt.Errorf("ID:%sの椅子は指定の範囲内にありません", chair.ID)
 		}
 		for _, req := range c.RequestHistory.BackwardIter() {
-			if req.BenchMatchedAt.After(baseTime.Add(-3 * time.Second)) {
+			if req.BenchRequestAcceptTime.After(baseTime.Add(-3 * time.Second)) {
 				// nearbychairsのリクエストを送った3秒前以降にマッチされている場合は許容する
 				break
 			}
@@ -373,15 +376,25 @@ func (w *World) checkNearbyChairsResponse(baseTime time.Time, current Coordinate
 	}
 	if len(errs) > 0 {
 		go w.PublishEvent(&EventSoftError{Error: WrapCodeError(ErrorCodeTooOldNearbyChairsResponse, errors.Join(errs...))})
-		errs = nil
 	}
 
+	type suspiciousChair struct {
+		// 疑わしい椅子
+		chair *Chair
+		// レスポンスを受け取った時点で最後に完了しているライド(nilの場合もあり)
+		lastReq *Request
+	}
+
+	var suspiciousChairs []*suspiciousChair
 	for chair := range w.EmptyChairs.Iter() {
 		if !checked[chair.ServerID] && chair.matchingData == nil && chair.Request == nil && chair.ActivatedAt.Before(baseTime) {
 			ok := false
-			for _, req := range chair.RequestHistory.BackwardIter() {
+			var req *Request
+			// この時点での、この椅子に割り当てられていた最後の完了済みのライドを見る
+			for _, r := range chair.RequestHistory.BackwardIter() {
+				req = r
 				// baseTimeよりも3秒前以降に完了状態に遷移している場合は、含まれていなくても許容する
-				if req.ServerCompletedAt.After(baseTime.Add(-3 * time.Second)) {
+				if r.ServerCompletedAt.After(baseTime.Add(-3 * time.Second)) {
 					ok = true
 				}
 				break
@@ -392,14 +405,55 @@ func (w *World) checkNearbyChairsResponse(baseTime time.Time, current Coordinate
 
 			c := chair.Location.GetCoordByTime(baseTime)
 			if c.Equals(chair.Location.GetCoordByTime(baseTime.Add(-3*time.Second))) && c.DistanceTo(current) <= distance {
-				// ソフトエラーとして処理する
-				errs = append(errs, fmt.Errorf("含まれるべき椅子が含まれていません: chair_id=%s", chair.ServerID))
+				// 少なくとも3秒間は止まっていて、範囲内に入っているようである
+				// 3秒後のチェック対象に入れる
+				suspiciousChairs = append(suspiciousChairs, &suspiciousChair{
+					chair:   chair,
+					lastReq: req,
+				})
 			}
 		}
 	}
-	// 2個までは無くても許容する
-	if len(errs) >= 3 {
-		go w.PublishEvent(&EventSoftError{Error: CodeError(ErrorCodeLackOfNearbyChairs)})
+
+	if len(suspiciousChairs) > 0 {
+		go func() {
+			// レスポンスを受け取った瞬間ではベンチマーカーとwebapp間で空いてる椅子の乖離があり得るので
+			// 3秒後に同期されたことを期待して、3秒後に実際に含まれるべきかどうかをチェックする
+			time.Sleep(3 * time.Second)
+
+			ng := 0
+			for _, sus := range suspiciousChairs {
+				var req *Request
+				// lastReqの次のReqがあればそれを取る。lastReqが無いなら先頭のを取る
+				next := sus.lastReq == nil
+				for _, r := range sus.chair.RequestHistory.Iter() {
+					if next {
+						req = r
+						break
+					}
+					if r.ID == sus.lastReq.ID {
+						next = true
+					}
+				}
+
+				// まだ無いということは含まれてないとおかしい
+				if req == nil {
+					ng++
+					continue
+				}
+
+				// nearbyChairsのリクエストを送ってから３秒以内にreqのマッチの通知が送られているなら含まれていなくて良い
+				if req.BenchRequestAcceptTime.Before(baseTime.Add(3 * time.Second)) {
+					continue
+				}
+				ng++
+			}
+			if ng > 0 {
+				if !w.finished.Load() {
+					w.PublishEvent(&EventSoftError{Error: WrapCodeError(ErrorCodeLackOfNearbyChairs, fmt.Errorf("不足数%d台", ng))})
+				}
+			}
+		}()
 	}
 	return nil
 }
@@ -413,7 +467,7 @@ func (w *World) handleTickError(err error) {
 		_ = w.ErrorCounter.Add(err)
 		w.criticalErrorCh <- err
 	} else {
-		w.contestantLogger.Error(err.Error())
+		w.contestantLogger.Warn(err.Error())
 		if err2 := w.ErrorCounter.Add(err); err2 != nil {
 			w.criticalErrorCh <- err2
 		}
@@ -443,4 +497,8 @@ func (w *World) PublishEvent(e Event) {
 	case *EventSoftError:
 		w.handleTickError(data.Error)
 	}
+}
+
+func (w *World) Finish() {
+	w.finished.Store(true)
 }

@@ -21,7 +21,6 @@ export default function OwnerRegister() {
 
   const handleOnClick = async () => {
     try {
-      // client validation
       if (!ownerName) {
         setErrorMessage("オーナー名を入力してください");
         return;
@@ -35,7 +34,6 @@ export default function OwnerRegister() {
           name: ownerName ?? "",
         },
       });
-
       navigate("/owner");
     } catch (e) {
       console.error(`ERROR: ${JSON.stringify(e)}`);

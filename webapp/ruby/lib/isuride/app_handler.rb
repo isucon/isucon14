@@ -62,7 +62,7 @@ module Isuride
         tx.xquery('INSERT INTO coupons (user_id, code, discount) VALUES (?, ?, ?)', user_id, 'CP_NEW2024', 3000)
 
 	# 招待コードを使った登録
-        unless req.invitation_code.nil?
+        unless req.invitation_code.nil? || req.invitation_code.empty?
           # 招待する側の招待数をチェック
           coupons = tx.xquery('SELECT * FROM coupons WHERE code = ? FOR UPDATE', "INV_#{req.invitation_code}").to_a
           if coupons.size >= 3
@@ -311,7 +311,7 @@ module Isuride
       response = db_transaction do |tx|
         ride = tx.xquery('SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', @current_user.id).first
         if ride.nil?
-          halt json(data: nil)
+          halt json(data: nil, retry_after_ms: 30)
         end
 
         yet_sent_ride_status = tx.xquery('SELECT * FROM ride_statuses WHERE ride_id = ? AND app_sent_at IS NULL ORDER BY created_at ASC LIMIT 1', ride.fetch(:id)).first
@@ -340,6 +340,7 @@ module Isuride
             created_at: time_msec(ride.fetch(:created_at)),
             updated_at: time_msec(ride.fetch(:updated_at)),
           },
+          retry_after_ms: 30,
         }
 
         unless ride.fetch(:chair_id).nil?
@@ -454,7 +455,7 @@ module Isuride
       def get_chair_stats(tx, chair_id)
         rides = tx.xquery('SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC', chair_id)
 
-        total_rides_count = rides.size
+        total_rides_count = 0
         total_evaluation = 0.0
         rides.each do |ride|
           ride_statuses = tx.xquery('SELECT * FROM ride_statuses WHERE ride_id = ? ORDER BY created_at', ride.fetch(:id))
@@ -479,7 +480,8 @@ module Isuride
             next
           end
 
-          total_evaluation = ride.fetch(:evaluation)
+          total_rides_count += 1
+          total_evaluation += ride.fetch(:evaluation)
         end
 
         total_evaluation_avg =

@@ -37,6 +37,7 @@ const DatePicker = () => {
         className="w-48"
         defaultValue={until}
         onChange={(e) => setUntil?.(e.target.value)}
+        min={since}
       />
     </div>
   );

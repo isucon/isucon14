@@ -178,6 +178,7 @@ class ChairGetNotificationResponseData(BaseModel):
 
 class ChairGetNotificationResponse(BaseModel):
     data: ChairGetNotificationResponseData | None = None
+    retry_after_ms: int | None = None
 
 
 @router.get("/notification", response_model_exclude_none=True)
@@ -194,7 +195,7 @@ def chair_get_notification(
         ).fetchone()
 
         if row is None:
-            return ChairGetNotificationResponse(data=None)
+            return ChairGetNotificationResponse(data=None, retry_after_ms=30)
 
         ride = Ride.model_validate(row)
         yet_sent_ride_status: RideStatus | None = None
@@ -238,7 +239,8 @@ def chair_get_notification(
                 latitude=ride.destination_latitude, longitude=ride.destination_longitude
             ),
             status=ride_status,
-        )
+        ),
+        retry_after_ms=30,
     )
 
 
@@ -268,7 +270,7 @@ def chair_post_ride_status(
             )
 
         match req.status:
-            # Accept matching
+            # Acknowledge the ride
             case "ENROUTE":
                 conn.execute(
                     text(

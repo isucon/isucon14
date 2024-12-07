@@ -37,11 +37,11 @@ const move = (
   }
 };
 
-const currentCoodinatePost = async (coordinate: Coordinate) => {
+const currentCoodinatePost = (coordinate: Coordinate) => {
   setSimulatorCurrentCoordinate(coordinate);
-  void (await fetchChairPostCoordinate({
+  return fetchChairPostCoordinate({
     body: coordinate,
-  }));
+  });
 };
 
 const postEnroute = (
@@ -50,7 +50,7 @@ const postEnroute = (
   abortSignal: AbortSignal,
 ) => {
   setSimulatorStartCoordinate(coordinate);
-  void fetchChairPostRideStatus(
+  return fetchChairPostRideStatus(
     {
       body: { status: "ENROUTE" },
       pathParams: {
@@ -62,7 +62,7 @@ const postEnroute = (
 };
 
 const postCarring = (rideId: string, abortSignal: AbortSignal) => {
-  void fetchChairPostRideStatus(
+  return fetchChairPostRideStatus(
     {
       body: { status: "CARRYING" },
       pathParams: {
@@ -87,7 +87,7 @@ const forceCarry = (
     try {
       void (async () => {
         void (await currentCoodinatePost(pickup_coordinate));
-        postCarring(rideId, abortSignal);
+        void postCarring(rideId, abortSignal);
       })();
     } catch (error) {
       console.error(error);
@@ -153,7 +153,7 @@ export const useEmulator = () => {
     if (!ride_id || status !== "PICKUP") return;
     const abortController = new AbortController();
     const timeoutId = setTimeout(
-      () => postCarring(ride_id, abortController.signal),
+      () => void postCarring(ride_id, abortController.signal),
       1000,
     );
     return () => {
@@ -167,7 +167,7 @@ export const useEmulator = () => {
     if (!ride_id || !currentCoordinate || status !== "MATCHING") return;
     const abortController = new AbortController();
     const timeoutId = setTimeout(
-      () => postEnroute(ride_id, currentCoordinate, abortController.signal),
+      () => void postEnroute(ride_id, currentCoordinate, abortController.signal),
       1000,
     );
     return () => {

@@ -179,6 +179,15 @@ func NewScenario(target, addr, paymentURL string, logger *slog.Logger, reporter 
 
 // Prepare はシナリオの初期化処理を行う
 func (s *Scenario) Prepare(ctx context.Context, step *isucandar.BenchmarkStep) error {
+	if s.skipStaticFileSanityCheck {
+		s.contestantLogger.Info("静的ファイルのチェックをスキップします")
+	} else {
+		if err := s.validateFrontendFiles(ctx); err != nil {
+			s.contestantLogger.Error("静的ファイルのチェックに失敗しました", slog.String("error", err.Error()))
+			return err
+		}
+	}
+
 	client, err := webapp.NewClient(webapp.ClientConfig{
 		TargetBaseURL:         s.target,
 		TargetAddr:            s.addr,
@@ -282,6 +291,7 @@ LOOP:
 	for {
 		select {
 		case <-ctx.Done():
+			s.world.Finish()
 			break LOOP
 
 		default:

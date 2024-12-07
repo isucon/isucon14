@@ -172,7 +172,7 @@ func writeError(w http.ResponseWriter, statusCode int, err error) {
 	}
 	w.Write(buf)
 
-	fmt.Fprintln(os.Stderr, err)
+	slog.Error("error response wrote", err)
 }
 
 func secureRandomStr(b int) string {

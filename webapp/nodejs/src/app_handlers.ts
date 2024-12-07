@@ -496,6 +496,7 @@ type AppGetNotificationResponseData = {
 
 type AppGetNotificationResponse = {
   data: AppGetNotificationResponseData;
+  retry_after_ms?: number;
 };
 
 export const appGetNotification = async (ctx: Context<Environment>) => {
@@ -508,7 +509,7 @@ export const appGetNotification = async (ctx: Context<Environment>) => {
       [user.id],
     );
     if (!ride) {
-      return ctx.json({}, 200);
+      return ctx.json({ retry_after_ms: 30 }, 200);
     }
     const [[yetSentRideStatus]] = await ctx.var.dbConn.query<
       Array<RideStatus & RowDataPacket>
@@ -546,6 +547,7 @@ export const appGetNotification = async (ctx: Context<Environment>) => {
         created_at: ride.created_at.getTime(),
         updated_at: ride.updated_at.getTime(),
       },
+      retry_after_ms: 30,
     };
     if (ride.chair_id !== null) {
       const [[chair]] = await ctx.var.dbConn.query<
@@ -592,7 +594,7 @@ async function getChairStats(
     [chairId],
   );
 
-  const totalRidesCount = rides.length;
+  let totalRidesCount = 0;
   let totalEvaluation = 0.0;
   for (const ride of rides) {
     const [rideStatuses] = await dbConn.query<
@@ -619,6 +621,7 @@ async function getChairStats(
         continue;
       }
 
+      totalRidesCount++;
       totalEvaluation += ride.evaluation ?? 0;
     }
   }

@@ -22,6 +22,8 @@ paths:
                 payment_server:
                   type: string
                   description: 決済サーバーアドレス
+                  minLength: 1
+                  example: https://example.com:8080
               required:
                 - payment_server
       responses:
@@ -43,6 +45,7 @@ paths:
                       - ruby
                       - rust
                       - node
+                    example: rust
                 required:
                   - language
   /app/users:
@@ -50,6 +53,7 @@ paths:
       tags:
         - app
       summary: ユーザーが会員登録を行う
+      description: 招待コードを用いて登録した場合は、招待クーポンを付与する
       operationId: app-post-users
       requestBody:
         content:
@@ -59,19 +63,29 @@ paths:
               properties:
                 username:
                   type: string
-                  description: ユーザー名
+                  description: ユーザー名 (ユニーク)
+                  example: Collier6283
+                  minLength: 1
                 firstname:
                   type: string
                   description: 名前
+                  example: 和治
+                  minLength: 1
                 lastname:
                   type: string
                   description: 名字
+                  example: 大森
+                  minLength: 1
                 date_of_birth:
                   type: string
                   description: 生年月日
+                  example: 2000-01-01
+                  format: date
+                  minLength: 1
                 invitation_code:
                   type: string
                   description: 他の人の招待コード
+                  example: 5c4a695f66d598e
               required:
                 - username
                 - firstname
@@ -94,9 +108,11 @@ paths:
                   id:
                     type: string
                     description: ユーザーID
+                    example: 01JDJ23EA0C0P2KFPTXDKTZMNM
                   invitation_code:
                     type: string
                     description: 自分の招待コード
+                    example: 5c4a695f66d598e
                 required:
                   - id
                   - invitation_code
@@ -121,6 +137,8 @@ paths:
                 token:
                   type: string
                   description: 決済トークン
+                  example: 34ea320039fc61ae2558176607a2e12c
+                  minLength: 1
               required:
                 - token
       responses:
@@ -150,32 +168,40 @@ paths:
                     type: array
                     items:
                       type: object
+                      description: pickup_coordinateは配車位置、destination_coordinateは目的地
                       properties:
                         id:
                           type: string
                           description: ライドID
+                          example: 01JDFEDF00B09BNMV8MP0RB34G
                         pickup_coordinate:
                           $ref: "#/components/schemas/Coordinate"
                         destination_coordinate:
                           $ref: "#/components/schemas/Coordinate"
                         fare:
                           type: integer
-                          description: 運賃
+                          description: 運賃(割引後)
+                          minimum: 0
+                          example: 500
                         chair:
                           type: object
                           properties:
                             id:
                               type: string
                               description: 椅子ID
+                              example: 01JDFEF7MGXXCJKW1MNJXPA77A
                             owner:
                               type: string
                               description: オーナー名
+                              example: 匠椅子製作所
                             name:
                               type: string
                               description: 椅子の名前
+                              example: QC-L13-8361
                             model:
                               type: string
                               description: 椅子のモデル
+                              example: クエストチェア Lite
                           required:
                             - id
                             - owner
@@ -184,14 +210,18 @@ paths:
                         evaluation:
                           type: integer
                           description: 椅子の評価
+                          minimum: 1
+                          maximum: 5
                         requested_at:
                           type: integer
                           format: int64
-                          description: 配車要求日時
+                          description: 配車要求日時 (UNIXミリ秒)
+                          example: 1733560208672
                         completed_at:
                           type: integer
                           format: int64
-                          description: 評価まで完了した日時
+                          description: 評価まで完了した日時 (UNIXミリ秒)
+                          example: 1733560218672
                       required:
                         - id
                         - pickup_coordinate
@@ -207,19 +237,19 @@ paths:
       tags:
         - app
       summary: ユーザーが配車を要求する
+      description: ユーザーがクーポンを所有している場合、自動で利用する
       operationId: app-post-rides
       requestBody:
         content:
           application/json:
             schema:
               type: object
+              description: pickup_coordinateは配車位置、destination_coordinateは目的地
               properties:
                 pickup_coordinate:
                   $ref: "#/components/schemas/Coordinate"
-                  description: 配車位置
                 destination_coordinate:
                   $ref: "#/components/schemas/Coordinate"
-                  description: 目的地
               required:
                 - pickup_coordinate
                 - destination_coordinate
@@ -234,9 +264,12 @@ paths:
                   ride_id:
                     type: string
                     description: ライドID
+                    example: 01JDFEDF00B09BNMV8MP0RB34G
                   fare:
                     type: integer
-                    description: 割引後運賃
+                    description: 運賃(割引後)
+                    minimum: 0
+                    example: 500
                 required:
                   - ride_id
                   - fare
@@ -263,13 +296,12 @@ paths:
           application/json:
             schema:
               type: object
+              description: pickup_coordinateは配車位置、destination_coordinateは目的地
               properties:
                 pickup_coordinate:
                   $ref: "#/components/schemas/Coordinate"
-                  description: 配車位置
                 destination_coordinate:
                   $ref: "#/components/schemas/Coordinate"
-                  description: 目的地
               required:
                 - pickup_coordinate
                 - destination_coordinate
@@ -283,10 +315,13 @@ paths:
                 properties:
                   fare:
                     type: integer
-                    description: 割引後運賃
+                    description: 割引後の運賃
+                    minimum: 0
+                    example: 500
                   discount:
                     type: integer
                     description: 割引額
+                    minimum: 0
                 required:
                   - fare
                   - discount
@@ -301,6 +336,7 @@ paths:
       tags:
         - app
       summary: ユーザーがライドを評価する
+      description: 社内の決済マイクロサービスでの決済処理も行う
       operationId: app-post-ride-evaluation
       parameters:
         - $ref: "#/components/parameters/ride_id"
@@ -328,7 +364,8 @@ paths:
                   completed_at:
                     type: integer
                     format: int64
-                    description: 完了日時
+                    description: 完了日時 (UNIXミリ秒)
+                    example: 1733560208672
                 required:
                   - completed_at
         "400":
@@ -356,7 +393,7 @@ paths:
           content:
             application/json:
               schema:
-                description: 自分のライドが１つでも存在する場合は最新のものをdataで返す。過去にライドが１つも存在しない場合、dataはnullまたはundefined
+                description: 自分のライドが１つでも存在する場合は最新のものをdataで返す。過去にライドが１つも存在しない場合、dataは`null`または`undefined`
                 type: object
                 properties:
                   data:
@@ -364,6 +401,7 @@ paths:
                   retry_after_ms:
                     type: integer
                     description: 次回の通知ポーリングまでの待機時間(ミリ秒単位)
+                    minimum: 0
   /app/nearby-chairs:
     get:
       tags:
@@ -389,6 +427,7 @@ paths:
           description: 検索距離
           schema:
             type: integer
+            default: 50
       responses:
         "200":
           description: OK
@@ -405,12 +444,15 @@ paths:
                         id:
                           type: string
                           description: 椅子ID
+                          example: 01JDFEF7MGXXCJKW1MNJXPA77A
                         name:
                           type: string
                           description: 椅子の名前
+                          example: QC-L13-8361
                         model:
                           type: string
                           description: 椅子のモデル
+                          example: クエストチェア Lite
                         current_coordinate:
                           $ref: "#/components/schemas/Coordinate"
                       required:
@@ -421,7 +463,8 @@ paths:
                   retrieved_at:
                     type: integer
                     format: int64
-                    description: 取得日時
+                    description: 取得日時 (UNIXミリ秒)
+                    example: 1733560208672
                 required:
                   - chairs
                   - retrieved_at
@@ -440,6 +483,8 @@ paths:
                 name:
                   type: string
                   description: オーナー名
+                  example: 匠椅子製作所
+                  minLength: 1
               required:
                 - name
       responses:
@@ -459,9 +504,11 @@ paths:
                   id:
                     type: string
                     description: オーナーID
+                    example: 01JDFEDF00B09BNMV8MP0RB34G
                   chair_register_token:
                     type: string
                     description: 椅子をオーナーに紐づけるための椅子登録用トークン
+                    example: 0811617de5c97aea5ddb433f085c3d1e
                 required:
                   - id
                   - chair_register_token
@@ -480,16 +527,18 @@ paths:
       parameters:
         - name: since
           in: query
-          description: 開始日時（含む）
+          description: 開始日時（含む） (UNIXミリ秒)
           schema:
             type: integer
             format: int64
+            example: 1733560208672
         - name: until
           in: query
-          description: 終了日時（含む）
+          description: 終了日時（含む） (UNIXミリ秒)
           schema:
             type: integer
             format: int64
+            example: 173356021672
       responses:
         "200":
           description: OK
@@ -501,6 +550,7 @@ paths:
                   total_sales:
                     type: integer
                     description: オーナーが管理する椅子全体の売上
+                    minimum: 0
                   chairs:
                     type: array
                     items:
@@ -509,12 +559,16 @@ paths:
                         id:
                           type: string
                           description: 椅子ID
+                          example: 01JDFEF7MGXXCJKW1MNJXPA77A
                         name:
                           type: string
-                          description: 椅子名
+                          description: 椅子の名前
+                          example: QC-L13-8361
                         sales:
                           type: integer
                           description: 椅子ごとの売上
+                          minimum: 0
+                          example: 500
                       required:
                         - id
                         - name
@@ -528,9 +582,12 @@ paths:
                         model:
                           type: string
                           description: モデル
+                          example: クエストチェア Lite
                         sales:
                           type: integer
                           description: モデルごとの売上
+                          minimum: 0
+                          example: 500
                       required:
                         - model
                         - sales
@@ -561,26 +618,32 @@ paths:
                         id:
                           type: string
                           description: 椅子ID
+                          example: 01JDFEF7MGXXCJKW1MNJXPA77A
                         name:
                           type: string
                           description: 椅子の名前
+                          example: QC-L13-8361
                         model:
                           type: string
                           description: 椅子のモデル
+                          example: クエストチェア Lite
                         active:
                           type: boolean
                           description: 稼働中かどうか
                         registered_at:
                           type: integer
                           format: int64
-                          description: 登録日時
+                          description: 登録日時 (UNIXミリ秒)
+                          example: 1733560208672
                         total_distance:
                           type: integer
                           description: 総移動距離
+                          minimum: 0
                         total_distance_updated_at:
                           type: integer
                           format: int64
-                          description: 総移動距離の更新日時
+                          description: 総移動距離の更新日時 (UNIXミリ秒)
+                          example: 1733560208672
                       required:
                         - id
                         - name
@@ -605,12 +668,18 @@ paths:
                 name:
                   type: string
                   description: 椅子の名前
+                  minLength: 1
+                  example: QC-L13-8361
                 model:
                   type: string
                   description: 椅子のモデル
+                  minLength: 1
+                  example: クエストチェア Lite
                 chair_register_token:
                   type: string
                   description: 椅子をオーナーに紐づけるための椅子登録用トークン
+                  minLength: 1
+                  example: 0811617de5c97aea5ddb433f085c3d1e
               required:
                 - name
                 - model
@@ -632,9 +701,11 @@ paths:
                   id:
                     type: string
                     description: 椅子ID
+                    example: 01JDFEF7MGXXCJKW1MNJXPA77A
                   owner_id:
                     type: string
                     description: オーナーID
+                    example: 01JDFEDF00B09BNMV8MP0RB34G
                 required:
                   - id
                   - owner_id
@@ -681,7 +752,8 @@ paths:
                   recorded_at:
                     type: integer
                     format: int64
-                    description: 記録日時
+                    description: 記録日時 (UNIXミリ秒)
+                    example: 1733560208672
                 required:
                   - recorded_at
   /chair/notification:
@@ -697,14 +769,14 @@ paths:
           content:
             application/json:
               schema:
-                description: 自分に割り当てられたライドが１つでも存在する場合は最新のものをdataで返す。過去にライドが１つも割り当てられていない場合、dataはnullまたはundefined
+                description: 自分に割り当てられたライドが１つでも存在する場合は最新のものをdataで返す。過去にライドが１つも割り当てられていない場合、dataは`null`または`undefined`
                 type: object
                 properties:
                   data:
                     $ref: "#/components/schemas/ChairNotificationData"
                   retry_after_ms:
                     type: integer
-                    description: 次回の通知ポーリングまでの待機時間(ミリ秒単位)
+                    description: 次回の通知ポーリングまでの待機時間 (ミリ秒単位)
   "/chair/rides/{ride_id}/status":
     post:
       tags:
@@ -726,8 +798,8 @@ paths:
                     - CARRYING
                   description: |
                     ライドの状態
-                    ENROUTE: マッチしたライドを確認し、乗車位置に向かう
-                    CARRYING: ユーザーが乗車し、椅子が目的地に向かう
+                    - ENROUTE: マッチしたライドを確認し、乗車位置に向かう
+                    - CARRYING: ユーザーが乗車し、椅子が目的地に向かう
               required:
                 - status
       responses:
@@ -744,6 +816,7 @@ paths:
       tags:
         - internal
       summary: ライドのマッチングを行う
+      description: "*内部からのみアクセス可能としている*"
       operationId: internal-get-matching
       responses:
         "204":
@@ -757,6 +830,7 @@ components:
       required: true
       schema:
         type: string
+        example: 01JDFEDF00B09BNMV8MP0RB34G
   schemas:
     Coordinate:
       type: object
@@ -786,12 +860,12 @@ components:
       description: |
         ライドのステータス
 
-        MATCHING: サービス上でマッチング処理を行なっていて椅子が確定していない
-        ENROUTE: 椅子が確定し、乗車位置に向かっている
-        PICKUP: 椅子が乗車位置に到着して、ユーザーの乗車を待機している
-        CARRYING: ユーザーが乗車し、椅子が目的地に向かっている
-        ARRIVED: 目的地に到着した
-        COMPLETED: ユーザーの決済・椅子評価が完了した
+        - MATCHING: サービス上でマッチング処理を行なっていて椅子が確定していない
+        - ENROUTE: 椅子が確定し、乗車位置に向かっている
+        - PICKUP: 椅子が乗車位置に到着して、ユーザーの乗車を待機している
+        - CARRYING: ユーザーが乗車し、椅子が目的地に向かっている
+        - ARRIVED: 目的地に到着した
+        - COMPLETED: ユーザーの決済・椅子評価が完了した
     User:
       type: object
       title: User
@@ -800,46 +874,31 @@ components:
         id:
           type: string
           description: ユーザーID
+          example: 01JDJ23EA0C0P2KFPTXDKTZMNM
         name:
           type: string
           description: ユーザー名
+          example: Collier6283
       required:
         - id
         - name
-    ChairRide:
-      description: Chair向けライド情報
-      type: object
-      properties:
-        id:
-          type: string
-          description: ライドID
-        user:
-          $ref: "#/components/schemas/User"
-        pickup_coordinate:
-          $ref: "#/components/schemas/Coordinate"
-        destination_coordinate:
-          $ref: "#/components/schemas/Coordinate"
-        status:
-          $ref: "#/components/schemas/RideStatus"
-      required:
-        - id
-        - user
-        - destination_coordinate
     Error:
       type: object
       title: Error
       properties:
         message:
           type: string
+          example: ride already exists
       required:
         - message
     UserNotificationData:
-      description: ユーザー向け通知データ
+      description: ユーザー向け通知データ。pickup_coordinateは配車位置、destination_coordinateは目的地
       type: object
       properties:
         ride_id:
           type: string
           description: ライドID
+          example: 01JDFEDF00B09BNMV8MP0RB34G
         pickup_coordinate:
           $ref: "#/components/schemas/Coordinate"
         destination_coordinate:
@@ -847,6 +906,8 @@ components:
         fare:
           type: integer
           description: 運賃(割引後)
+          minimum: 0
+          example: 500
         status:
           $ref: "#/components/schemas/RideStatus"
         chair:
@@ -856,25 +917,31 @@ components:
             id:
               type: string
               description: 椅子ID
+              example: 01JDFEF7MGXXCJKW1MNJXPA77A
             name:
               type: string
               description: 椅子の名前
+              example: QC-L13-8361
             model:
               type: string
               description: 椅子のモデル
+              example: クエストチェア Lite
             stats:
               type: object
               description: 椅子の統計情報
               properties:
                 total_rides_count:
                   type: integer
-                  description: 総乗車回数
+                  description: 完了した乗車の回数の合計
+                  minimum: 0
                 total_evaluation_avg:
                   type: number
                   description: 総評価平均
+                  minimum: 0
+                  maximum: 5
+                  example: 3.75
               required:
                 - total_rides_count
-                - total_evaluation_avg
           required:
             - id
             - name
@@ -883,11 +950,13 @@ components:
         created_at:
           type: integer
           format: int64
-          description: 配車要求日時
+          description: 配車要求日時 (UNIXミリ秒)
+          example: 1733560218672
         updated_at:
           type: integer
           format: int64
-          description: 配車要求更新日時
+          description: 配車要求更新日時 (UNIXミリ秒)
+          example: 1733560518672
       required:
         - ride_id
         - pickup_coordinate
@@ -903,6 +972,7 @@ components:
         ride_id:
           type: string
           description: ライドID
+          example: 01JDFEDF00B09BNMV8MP0RB34G
         user:
           $ref: "#/components/schemas/User"
         pickup_coordinate:

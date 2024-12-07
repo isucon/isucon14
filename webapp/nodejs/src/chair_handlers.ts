@@ -120,7 +120,7 @@ export const chairGetNotification = async (ctx: Context<Environment>) => {
       [chair.id],
     );
     if (!ride) {
-      return ctx.json({}, 200);
+      return ctx.json({ retry_after_ms: 30 }, 200);
     }
 
     const [[yetSentRideStatus]] = await ctx.var.dbConn.query<
@@ -164,6 +164,7 @@ export const chairGetNotification = async (ctx: Context<Environment>) => {
           },
           status,
         },
+        retry_after_ms: 30,
       },
       200,
     );

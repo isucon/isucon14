@@ -1,9 +1,11 @@
 package world
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"slices"
 	"sync"
@@ -63,6 +65,8 @@ type User struct {
 	notificationConn NotificationStream
 	// notificationQueue 通知キュー。毎Tickで最初に処理される
 	notificationQueue chan NotificationEvent
+	// validatedRideNotificationEvent 最新のバリデーション済みの通知イベント情報
+	validatedRideNotificationEvent *UserNotificationEvent
 }
 
 type RegisteredUserData struct {
@@ -172,6 +176,9 @@ func (u *User) Tick(ctx *Context) error {
 				res, err := u.Client.SendEvaluation(ctx, u.Request, score)
 				if err != nil {
 					u.Request.Statuses.Unlock()
+					if errors.Is(err, context.DeadlineExceeded) {
+						return WrapCodeError(ErrorCodeEvaluateTimeout, err)
+					}
 					return WrapCodeError(ErrorCodeFailedToEvaluate, err)
 				}
 
@@ -270,19 +277,19 @@ func (u *User) CheckRequestHistory(ctx *Context) error {
 			return fmt.Errorf("想定されないライドが含まれています: id=%s", req.ID)
 		}
 		if !req.DestinationCoordinate.Equals(expected.DestinationPoint) || !req.PickupCoordinate.Equals(expected.PickupPoint) {
-			return fmt.Errorf("ライドの座標情報が正しくありません: id=%s", req.ID)
+			return fmt.Errorf("ライドの座標情報が期待したものと異なります: id=%s", req.ID)
 		}
 		if req.Fare != expected.Fare() {
-			return fmt.Errorf("ライドの運賃が正しくありません: id=%s", req.ID)
+			return fmt.Errorf("ライドの運賃が期待したものと異なります: id=%s", req.ID)
 		}
 		if req.Evaluation != expected.CalculateEvaluation().Score() {
-			return fmt.Errorf("ライドの評価が正しくありません: id=%s", req.ID)
+			return fmt.Errorf("ライドの評価が期待したものと異なります: id=%s", req.ID)
 		}
 		if req.Chair.ID != expected.Chair.ServerID || req.Chair.Name != expected.Chair.RegisteredData.Name || req.Chair.Model != expected.Chair.Model.Name || req.Chair.Owner != expected.Chair.Owner.RegisteredData.Name {
-			return fmt.Errorf("ライドの椅子の情報が正しくありません: id=%s", req.ID)
+			return fmt.Errorf("ライドの椅子の情報が期待したものと異なります: id=%s", req.ID)
 		}
 		if !req.CompletedAt.Equal(expected.ServerCompletedAt) {
-			return fmt.Errorf("ライドの完了日時が正しくありません: id=%s", req.ID)
+			return fmt.Errorf("ライドの完了日時が期待したものと異なります: id=%s", req.ID)
 		}
 	}
 
@@ -364,7 +371,7 @@ func (u *User) CreateRequest(ctx *Context) error {
 	return nil
 }
 
-func (u *User) ChangeRequestStatus(status RequestStatus, serverRequestID string) error {
+func (u *User) ChangeRequestStatus(status RequestStatus, serverRequestID string, validator func() error) error {
 	request := u.Request
 	if request == nil {
 		if status == RequestStatusCompleted {
@@ -401,37 +408,192 @@ func (u *User) ChangeRequestStatus(status RequestStatus, serverRequestID string)
 			return WrapCodeError(ErrorCodeUnexpectedUserRequestStatusTransitionOccurred, fmt.Errorf("ride_id: %v, expect: %v, got: %v (current: %v)", request.ServerID, request.Statuses.Desired, status, request.Statuses.User))
 		}
 	}
+
+	if validator != nil {
+		if err := validator(); err != nil {
+			return WrapCodeError(ErrorCodeUserReceivedDataIsWrong, err)
+		}
+	}
+
 	request.Statuses.User = status
 	return nil
 }
 
 func (u *User) HandleNotification(event NotificationEvent) error {
 	switch data := event.(type) {
+	case *UserNotificationEventMatching:
+		err := u.ChangeRequestStatus(RequestStatusMatching, data.ServerRequestID, func() error {
+			return u.ValidateNotificationEvent(data.ServerRequestID, data.UserNotificationEvent, true)
+		})
+		if err != nil {
+			return err
+		}
 	case *UserNotificationEventDispatching:
-		err := u.ChangeRequestStatus(RequestStatusDispatching, data.ServerRequestID)
+		err := u.ChangeRequestStatus(RequestStatusDispatching, data.ServerRequestID, func() error {
+			if err := u.ValidateNotificationEvent(data.ServerRequestID, data.UserNotificationEvent, false); err != nil {
+				return err
+			}
+			u.validatedRideNotificationEvent = &data.UserNotificationEvent
+			return nil
+		})
 		if err != nil {
 			return err
 		}
 	case *UserNotificationEventDispatched:
-		err := u.ChangeRequestStatus(RequestStatusDispatched, data.ServerRequestID)
+		err := u.ChangeRequestStatus(RequestStatusDispatched, data.ServerRequestID, func() error {
+			if u.validatedRideNotificationEvent != nil {
+				return compareUserNotificationEvent(data.ServerRequestID, *u.validatedRideNotificationEvent, data.UserNotificationEvent)
+			}
+			if err := u.ValidateNotificationEvent(data.ServerRequestID, data.UserNotificationEvent, false); err != nil {
+				return err
+			}
+			u.validatedRideNotificationEvent = &data.UserNotificationEvent
+			return nil
+		})
 		if err != nil {
 			return err
 		}
 	case *UserNotificationEventCarrying:
-		err := u.ChangeRequestStatus(RequestStatusCarrying, data.ServerRequestID)
+		err := u.ChangeRequestStatus(RequestStatusCarrying, data.ServerRequestID, func() error {
+			if u.validatedRideNotificationEvent != nil {
+				return compareUserNotificationEvent(data.ServerRequestID, *u.validatedRideNotificationEvent, data.UserNotificationEvent)
+			}
+			if err := u.ValidateNotificationEvent(data.ServerRequestID, data.UserNotificationEvent, false); err != nil {
+				return err
+			}
+			u.validatedRideNotificationEvent = &data.UserNotificationEvent
+			return nil
+		})
 		if err != nil {
 			return err
 		}
 	case *UserNotificationEventArrived:
-		err := u.ChangeRequestStatus(RequestStatusArrived, data.ServerRequestID)
+		err := u.ChangeRequestStatus(RequestStatusArrived, data.ServerRequestID, func() error {
+			if u.validatedRideNotificationEvent != nil {
+				return compareUserNotificationEvent(data.ServerRequestID, *u.validatedRideNotificationEvent, data.UserNotificationEvent)
+			}
+			if err := u.ValidateNotificationEvent(data.ServerRequestID, data.UserNotificationEvent, false); err != nil {
+				return err
+			}
+			u.validatedRideNotificationEvent = &data.UserNotificationEvent
+			return nil
+		})
 		if err != nil {
 			return err
 		}
 	case *UserNotificationEventCompleted:
-		err := u.ChangeRequestStatus(RequestStatusCompleted, data.ServerRequestID)
+		err := u.ChangeRequestStatus(RequestStatusCompleted, data.ServerRequestID, func() error {
+			return u.ValidateNotificationEvent(data.ServerRequestID, data.UserNotificationEvent, false)
+		})
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (u *User) ValidateNotificationEvent(rideID string, serverSide UserNotificationEvent, ignoreChair bool) error {
+	if !serverSide.Pickup.Equals(u.Request.PickupPoint) {
+		return fmt.Errorf("配車位置が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, serverSide.Pickup, u.Request.PickupPoint)
+	}
+	if !serverSide.Destination.Equals(u.Request.DestinationPoint) {
+		return fmt.Errorf("目的地が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, serverSide.Destination, u.Request.DestinationPoint)
+	}
+
+	if serverSide.Fare != u.Request.Fare() {
+		return fmt.Errorf("運賃が一致しません。(ride_id: %s, got: %d, want: %d)", rideID, serverSide.Fare, u.Request.Fare())
+	}
+
+	if ignoreChair {
+		return nil
+	}
+
+	if serverSide.Chair == nil {
+		return fmt.Errorf("椅子情報がありません。(ride_id: %s)", rideID)
+	}
+
+	serverSideChair := serverSide.Chair
+	chair := u.World.ChairDB.GetByServerID(serverSideChair.ID)
+	if chair == nil {
+		return fmt.Errorf("想定していない椅子が返却されました。(ride_id: %s, chair_id: %s)", rideID, serverSide.Chair.ID)
+	}
+
+	if serverSideChair.Name != chair.RegisteredData.Name {
+		return fmt.Errorf("椅子の名前が一致しません。(ride_id: %s, chair_id: %s, got: %s, want: %s)", rideID, serverSide.Chair.ID, serverSide.Chair.Name, u.Request.Chair.RegisteredData.Name)
+	}
+	if serverSideChair.Model != chair.Model.Name {
+		return fmt.Errorf("椅子のモデルが一致しません。(ride_id: %s, chair_id: %s, got: %s, want: %s)", rideID, serverSide.Chair.ID, serverSide.Chair.Model, u.Request.Chair.Model.Name)
+	}
+
+	totalRideCount := 0
+	totalEvaluation := 0
+	for _, r := range chair.RequestHistory.Iter() {
+		if r.Evaluated.Load() {
+			totalRideCount++
+			totalEvaluation += r.CalculateEvaluation().Score()
+		}
+	}
+
+	if serverSideChair.Stats.TotalRidesCount != totalRideCount {
+		return fmt.Errorf("椅子の総乗車回数が一致しません。(ride_id: %s, chair_id: %s, got: %d, want: %d)", rideID, serverSide.Chair.ID, serverSide.Chair.Stats.TotalRidesCount, totalRideCount)
+	}
+	if totalRideCount > 0 {
+		if !almostEqual(serverSideChair.Stats.TotalEvaluationAvg, float64(totalEvaluation)/float64(totalRideCount), 0.01) {
+			return fmt.Errorf("椅子の評価の平均が一致しません。(ride_id: %s, chair_id: %s, got: %f, want: %f)", rideID, serverSide.Chair.ID, serverSide.Chair.Stats.TotalEvaluationAvg, float64(totalEvaluation)/float64(totalRideCount))
+		}
+	} else {
+		if serverSideChair.Stats.TotalEvaluationAvg != 0 {
+			return fmt.Errorf("椅子の評価の平均が一致しません。(ride_id: %s, chair_id: %s, got: %f, want: %f)", rideID, serverSide.Chair.ID, serverSide.Chair.Stats.TotalEvaluationAvg, 0.0)
+		}
+	}
+
+	return nil
+}
+
+// compareUserNotificationEvent validation済みのUserNotificationEventと比較して、一致しない場合はエラーを返す
+func compareUserNotificationEvent(rideID string, old, new UserNotificationEvent) error {
+	if !new.Pickup.Equals(old.Pickup) {
+		return fmt.Errorf("配車位置が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, new.Pickup, old.Pickup)
+	}
+	if !new.Destination.Equals(old.Destination) {
+		return fmt.Errorf("目的地が一致しません。(ride_id: %s, got: %s, want: %s)", rideID, new.Destination, old.Destination)
+	}
+
+	if new.Fare != old.Fare {
+		return fmt.Errorf("運賃が一致しません。(ride_id: %s, got: %d, want: %d)", rideID, new.Fare, old.Fare)
+	}
+
+	if new.Chair == nil {
+		return fmt.Errorf("椅子情報がありません。(ride_id: %s)", rideID)
+	}
+
+	if new.Chair.ID != old.Chair.ID {
+		return fmt.Errorf("椅子のIDが一致しません。(ride_id: %s, got: %s, want: %s)", rideID, new.Chair.ID, old.Chair.ID)
+	}
+	if new.Chair.Name != old.Chair.Name {
+		return fmt.Errorf("椅子の名前が一致しません。(ride_id: %s, chair_id: %s, got: %s, want: %s)", rideID, new.Chair.ID, new.Chair.Name, old.Chair.Name)
+	}
+	if new.Chair.Model != old.Chair.Model {
+		return fmt.Errorf("椅子のモデルが一致しません。(ride_id: %s, chair_id: %s, got: %s, want: %s)", rideID, new.Chair.ID, new.Chair.Model, old.Chair.Model)
+	}
+
+	if new.Chair.Stats.TotalRidesCount != old.Chair.Stats.TotalRidesCount {
+		return fmt.Errorf("椅子の総乗車回数が一致しません。(ride_id: %s, chair_id: %s, got: %d, want: %d)", rideID, new.Chair.ID, new.Chair.Stats.TotalRidesCount, old.Chair.Stats.TotalRidesCount)
+	}
+	if !almostEqual(new.Chair.Stats.TotalEvaluationAvg, old.Chair.Stats.TotalEvaluationAvg, 0.01) {
+		return fmt.Errorf("椅子の評価の平均が一致しません。(ride_id: %s, chair_id: %s, got: %f, want: %f)", rideID, new.Chair.ID, new.Chair.Stats.TotalEvaluationAvg, old.Chair.Stats.TotalEvaluationAvg)
+	}
+
+	return nil
+}
+
+func almostEqual(a, b, epsilon float64) bool {
+	// 絶対誤差と相対誤差を組み合わせて比較
+	absDiff := math.Abs(a - b)
+	if absDiff <= epsilon {
+		return true
+	}
+	// 相対誤差の比較
+	maxAbs := math.Max(math.Abs(a), math.Abs(b))
+	return absDiff <= epsilon*maxAbs
 }

@@ -164,7 +164,7 @@ abstract class AbstractHttpHandler
                 updatedAt: $row['updated_at']
             );
         }
-        $totalRideCount = count($rides);
+        $totalRideCount = 0;
         $totalEvaluation = 0.0;
         foreach ($rides as $ride) {
             /** @var RideStatus[] $rideStatuses */
@@ -203,11 +203,14 @@ abstract class AbstractHttpHandler
             if (!$isCompleted) {
                 continue;
             }
+            $totalRideCount++;
             $totalEvaluation += (float)$ride->evaluation;
         }
         $stats->setTotalRidesCount($totalRideCount);
         if ($totalRideCount > 0) { // @phpstan-ignore-line
             $stats->setTotalEvaluationAvg($totalEvaluation / (float)$totalRideCount);
+        } else {
+            $stats->setTotalEvaluationAvg(0.0);
         }
         return new ChairStats($stats, null);
     }

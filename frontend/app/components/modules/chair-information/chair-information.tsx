@@ -7,7 +7,6 @@ import { ClientAppChair } from "~/types";
 export const ChairInformation: FC<
   { chair: ClientAppChair } & ComponentProps<"div">
 > = ({ chair, className, ...props }) => {
-  chair.stats = { total_evaluation_avg: 500, total_rides_count: 100 };
   return (
     <div
       className={twMerge(
@@ -33,7 +32,7 @@ export const ChairInformation: FC<
             <Text tagName="span" className="pr-1">
               評価:
             </Text>
-            {chair.stats?.total_evaluation_avg}
+            {chair.stats.total_evaluation_avg.toFixed(1)}
           </Text>
         )}
         {chair.stats?.total_rides_count && (

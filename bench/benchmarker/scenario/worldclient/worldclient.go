@@ -255,28 +255,44 @@ func (c *chairClient) ConnectChairNotificationStream(ctx *world.Context, chair *
 			if r.Data.Valid {
 				data := r.Data.V
 				var event world.NotificationEvent
+				notificationEvent := world.ChairNotificationEvent{
+					User: world.ChairNotificationEventUserPayload{
+						ID:   data.User.ID,
+						Name: data.User.Name,
+					},
+					Pickup:      world.C(data.PickupCoordinate.Latitude, data.PickupCoordinate.Longitude),
+					Destination: world.C(data.DestinationCoordinate.Latitude, data.DestinationCoordinate.Longitude),
+				}
 				switch data.Status {
 				case api.RideStatusMATCHING:
 					event = &world.ChairNotificationEventMatched{
-						ServerRequestID: data.RideID,
-						User: world.ChairNotificationEventUserPayload{
-							ID:   data.User.ID,
-							Name: data.User.Name,
-						},
-						Pickup:      world.C(data.PickupCoordinate.Latitude, data.PickupCoordinate.Longitude),
-						Destination: world.C(data.DestinationCoordinate.Latitude, data.DestinationCoordinate.Longitude),
+						ServerRequestID:        data.RideID,
+						ChairNotificationEvent: notificationEvent,
 					}
 				case api.RideStatusENROUTE:
-					// event = &world.ChairNotificationEventDispatching{}
+					event = &world.ChairNotificationEventDispatching{
+						ServerRequestID:        data.RideID,
+						ChairNotificationEvent: notificationEvent,
+					}
 				case api.RideStatusPICKUP:
-					// event = &world.ChairNotificationEventDispatched{}
+					event = &world.ChairNotificationEventDispatched{
+						ServerRequestID:        data.RideID,
+						ChairNotificationEvent: notificationEvent,
+					}
 				case api.RideStatusCARRYING:
-					// event = &world.ChairNotificationEventCarrying{}
+					event = &world.ChairNotificationEventCarrying{
+						ServerRequestID:        data.RideID,
+						ChairNotificationEvent: notificationEvent,
+					}
 				case api.RideStatusARRIVED:
-					// event = &world.ChairNotificationEventArrived{}
+					event = &world.ChairNotificationEventArrived{
+						ServerRequestID:        data.RideID,
+						ChairNotificationEvent: notificationEvent,
+					}
 				case api.RideStatusCOMPLETED:
 					event = &world.ChairNotificationEventCompleted{
-						ServerRequestID: data.RideID,
+						ServerRequestID:        data.RideID,
+						ChairNotificationEvent: notificationEvent,
 					}
 				}
 				if event == nil {
@@ -431,28 +447,53 @@ func (c *userClient) ConnectUserNotificationStream(ctx *world.Context, user *wor
 			if r.Data.Valid {
 				data := r.Data.V
 				var event world.NotificationEvent
+				userNotificationEvent := world.UserNotificationEvent{
+					Pickup:      world.C(data.PickupCoordinate.Latitude, data.PickupCoordinate.Longitude),
+					Destination: world.C(data.DestinationCoordinate.Latitude, data.DestinationCoordinate.Longitude),
+					Fare:        data.Fare,
+					Chair:       nil,
+				}
+				if data.Chair.Set {
+					userNotificationEvent.Chair = &world.UserNotificationEventChairPayload{
+						ID:    data.Chair.Value.ID,
+						Name:  data.Chair.Value.Name,
+						Model: data.Chair.Value.Model,
+						Stats: world.UserNotificationEventChairStatsPayload{
+							TotalRidesCount:    data.Chair.Value.Stats.TotalRidesCount,
+							TotalEvaluationAvg: data.Chair.Value.Stats.TotalEvaluationAvg,
+						},
+					}
+				}
 				switch data.Status {
 				case api.RideStatusMATCHING:
-					// event = &world.UserNotificationEventMatching{}
+					event = &world.UserNotificationEventMatching{
+						ServerRequestID:       data.RideID,
+						UserNotificationEvent: userNotificationEvent,
+					}
 				case api.RideStatusENROUTE:
 					event = &world.UserNotificationEventDispatching{
-						ServerRequestID: data.RideID,
+						ServerRequestID:       data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				case api.RideStatusPICKUP:
 					event = &world.UserNotificationEventDispatched{
-						ServerRequestID: data.RideID,
+						ServerRequestID:       data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				case api.RideStatusCARRYING:
 					event = &world.UserNotificationEventCarrying{
-						ServerRequestID: data.RideID,
+						ServerRequestID:       data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				case api.RideStatusARRIVED:
 					event = &world.UserNotificationEventArrived{
-						ServerRequestID: data.RideID,
+						ServerRequestID:       data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				case api.RideStatusCOMPLETED:
 					event = &world.UserNotificationEventCompleted{
-						ServerRequestID: data.RideID,
+						ServerRequestID:       data.RideID,
+						UserNotificationEvent: userNotificationEvent,
 					}
 				}
 				if event == nil {
@@ -495,7 +536,7 @@ func browserAccess(ctx context.Context, client *webapp.Client, scenario benchrun
 			return WrapCodeError(ErrorCodeFailedToGetStaticFile, err)
 		}
 		if hash != benchrun.FrontendHashesMap["index.html"] {
-			return WrapCodeError(ErrorCodeInvalidContent, errors.New("invalid content for "+path))
+			return WrapCodeError(ErrorCodeInvalidContent, errors.New(path+"の内容が期待したものと一致しません"))
 		}
 	}
 
@@ -506,7 +547,7 @@ func browserAccess(ctx context.Context, client *webapp.Client, scenario benchrun
 			return WrapCodeError(ErrorCodeFailedToGetStaticFile, err)
 		}
 		if hash != benchrun.FrontendHashesMap[filePath[1:]] {
-			return WrapCodeError(ErrorCodeInvalidContent, errors.New("invalid content for "+filePath))
+			return WrapCodeError(ErrorCodeInvalidContent, errors.New(filePath+"の内容が期待したものと一致しません"))
 		}
 	}
 

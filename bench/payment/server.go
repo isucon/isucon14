@@ -19,7 +19,7 @@ type processedPayment struct {
 type Server struct {
 	mux               *http.ServeMux
 	knownKeys         *concurrent.SimpleMap[string, *Payment]
-	failureCounts     *concurrent.SimpleMap[string, int]
+	retryCounts       *concurrent.SimpleMap[string, int]
 	processedPayments *concurrent.SimpleSlice[*processedPayment]
 	processTime       time.Duration
 	verifier          Verifier
@@ -31,7 +31,7 @@ func NewServer(verifier Verifier, processTime time.Duration, errChan chan error)
 	s := &Server{
 		mux:               http.NewServeMux(),
 		knownKeys:         concurrent.NewSimpleMap[string, *Payment](),
-		failureCounts:     concurrent.NewSimpleMap[string, int](),
+		retryCounts:       concurrent.NewSimpleMap[string, int](),
 		processedPayments: concurrent.NewSimpleSlice[*processedPayment](),
 		processTime:       processTime,
 		verifier:          verifier,

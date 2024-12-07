@@ -87,6 +87,7 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 		parsed, err := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
+			return
 		}
 		since = time.UnixMilli(parsed)
 	}
@@ -94,6 +95,7 @@ func ownerGetSales(w http.ResponseWriter, r *http.Request) {
 		parsed, err := strconv.ParseInt(r.URL.Query().Get("until"), 10, 64)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
+			return
 		}
 		until = time.UnixMilli(parsed)
 	}

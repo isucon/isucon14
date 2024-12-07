@@ -160,7 +160,8 @@ use constant ChairGetNotificationResponseData => {
 };
 
 use constant ChairGetNotificationResponse => {
-    data => json_type_null_or_anyof(ChairGetNotificationResponseData)
+    data           => json_type_null_or_anyof(ChairGetNotificationResponseData),
+    retry_after_ms => JSON_TYPE_INT,
 };
 
 sub chair_get_notification ($c) {
@@ -172,7 +173,7 @@ sub chair_get_notification ($c) {
     my $ride = $db->select_row('SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC LIMIT 1', $chair->{id});
 
     unless ($ride) {
-        return $c->render_json(HTTP_OK, { data => undef }, ChairGetNotificationResponse);
+        return $c->render_json(HTTP_OK, { data => undef, retry_after_ms => 30 }, ChairGetNotificationResponse);
     }
 
     my $status;
@@ -211,7 +212,8 @@ sub chair_get_notification ($c) {
                     longitude => $ride->{destination_longitude}
                 },
                 status => $status,
-            }
+            },
+            retry_after_ms => 30
     }, ChairGetNotificationResponse);
 
 }

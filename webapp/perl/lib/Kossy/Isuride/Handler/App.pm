@@ -501,7 +501,8 @@ use constant AppGetNotificationResponseData => {
 };
 
 use constant AppGetNotificationResponse => {
-    data => json_type_null_or_anyof(AppGetNotificationResponseData),
+    data           => json_type_null_or_anyof(AppGetNotificationResponseData),
+    retry_after_ms => JSON_TYPE_INT,
 };
 
 sub app_get_notification ($app, $c) {
@@ -512,7 +513,7 @@ sub app_get_notification ($app, $c) {
     my $ride = $app->dbh->select_row(q{SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1}, $user->{id});
 
     unless (defined $ride) {
-        return $c->render_json({ data => undef });
+        return $c->render_json({ data => undef, retry_after_ms => 30 });
     }
 
     my $yet_sent_ride_status = $app->dbh->select_row(q{SELECT * FROM ride_statuses WHERE ride_id = ? AND app_sent_at IS NULL ORDER BY created_at ASC LIMIT 1}, $ride->{id});
@@ -542,6 +543,7 @@ sub app_get_notification ($app, $c) {
             created_at => unix_milli_from_str($ride->{created_at}),
             update_at  => unix_milli_from_str($ride->{updated_at}),
         },
+        retry_after_ms => 30,
     };
 
     if ($ride->{chair_id}) {
@@ -571,7 +573,7 @@ sub get_chair_stats ($app, $chair_id) {
     my $stats = {};
     my $rides = $app->dbh->select_all(q{SELECT * FROM rides WHERE chair_id = ? ORDER BY updated_at DESC}, $chair_id);
 
-    my $total_rides_count    = scalar $rides->@*;
+    my $total_rides_count    = 0;
     my $total_evaluation_avg = 0;
 
     for my $ride ($rides->@*) {
@@ -598,12 +600,15 @@ sub get_chair_stats ($app, $chair_id) {
             next;
         }
 
+        $total_rides_count++;
         $total_evaluation_avg += $ride->{evaluation};
     }
     $stats->{total_rides_count} = $total_rides_count;
 
     if ($total_rides_count > 0) {
         $stats->{total_evaluation_avg} = $total_evaluation_avg / $total_rides_count;
+    } else {
+        $stats->{total_evaluation_avg} = 0;
     }
 
     return $stats;

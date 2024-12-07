@@ -16,7 +16,7 @@ import { Button } from "~/components/primitives/button/button";
 import { Modal } from "~/components/primitives/modal/modal";
 import { Text } from "~/components/primitives/text/text";
 import { useClientContext } from "~/contexts/client-context";
-import { NearByChair } from "~/types";
+import type { Distance, NearByChair } from "~/types";
 import { sendClientReady, sendClientRideRequested } from "~/utils/post-message";
 import { Arrived } from "./driving-state/arrived";
 import { Carrying } from "./driving-state/carrying";
@@ -44,12 +44,17 @@ export default function Index() {
   const [selectedLocation, setSelectedLocation] = useState<Coordinate>();
   const [displayedChairs, setDisplayedChairs] = useState<NearByChair[]>([]);
   const [centerCoordinate, setCenterCoodirnate] = useState<Coordinate>();
-  const onCenterMove = useCallback(
+  const [distance, setDistance] = useState<Distance>();
+  const onMove = useCallback(
     (coordinate: Coordinate) => setCenterCoodirnate(coordinate),
     [],
   );
   const onSelectMove = useCallback(
     (coordinate: Coordinate) => setSelectedLocation(coordinate),
+    [],
+  );
+  const onUpdateViewSize = useCallback(
+    (distance: Distance) => setDistance(distance),
     [],
   );
   const [isLocationSelectorModalOpen, setLocationSelectorModalOpen] =
@@ -132,7 +137,12 @@ export default function Index() {
           queryParams: {
             latitude,
             longitude,
-            distance: 150,
+            distance: distance
+              ? Math.max(
+                  distance.horizontalDistance + 10,
+                  distance.verticalDistance + 10,
+                )
+              : 150,
           },
         });
         setDisplayedChairs(chairs);
@@ -155,7 +165,7 @@ export default function Index() {
       clearTimeout(timeoutId);
       abortController?.abort();
     };
-  }, [centerCoordinate, isStatusModalOpen]);
+  }, [centerCoordinate, isStatusModalOpen, distance]);
 
   useEffect(() => {
     sendClientReady(window.parent, { ready: true });
@@ -170,7 +180,8 @@ export default function Index() {
       <Map
         from={currentLocation}
         to={destLocation}
-        onMove={onCenterMove}
+        onMove={onMove}
+        onUpdateViewSize={onUpdateViewSize}
         initialCoordinate={selectedLocation}
         chairs={[...displayedChairs, ...emulateChairs]}
         className="flex-1"

@@ -5,7 +5,7 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115.5",
     "gunicorn>=23.0.0",
-    "pymysql>=1.1.1",
+    "pymysql[rsa]>=1.1.1",
     "python-ulid>=3.0.0",
     "sqlalchemy>=2.0.36",
     "urllib3>=2.2.3",

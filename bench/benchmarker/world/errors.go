@@ -25,6 +25,8 @@ const (
 	_
 	// ErrorCodeFailedToEvaluate ユーザーが送迎の評価をしようとしたが失敗した
 	ErrorCodeFailedToEvaluate
+	// ErrorCodeEvaluateTimeout ユーザーが送迎の評価をしようとしたがタイムアウトした
+	ErrorCodeEvaluateTimeout
 	// ErrorCodeFailedToCheckRequestHistory ユーザーがリクエスト履歴を確認しようとしたが失敗した
 	ErrorCodeFailedToCheckRequestHistory
 	// ErrorCodeFailedToCreateRequest ユーザーがリクエストを作成しようとしたが失敗した
@@ -75,6 +77,8 @@ const (
 	ErrorCodeLackOfNearbyChairs
 	// ErrorCodeMatchingTimeout マッチングに時間がかかりすぎです
 	ErrorCodeMatchingTimeout
+	// ErrorCodeUserReceivedDataIsWrong ユーザーが通知から受け取ったデータが想定と異なります
+	ErrorCodeUserReceivedDataIsWrong
 )
 
 var CriticalErrorCodes = map[ErrorCode]bool{
@@ -86,6 +90,7 @@ var CriticalErrorCodes = map[ErrorCode]bool{
 	ErrorCodeIncorrectAmountOfFareCharged:                   true,
 	ErrorCodeUncontrollableRequestReceived:                  true,
 	ErrorCodeMatchingTimeout:                                true,
+	ErrorCodeEvaluateTimeout:                                true,
 }
 
 var ErrorTexts = map[ErrorCode]string{
@@ -93,6 +98,7 @@ var ErrorTexts = map[ErrorCode]string{
 	ErrorCodeFailedToDepart:                                 "椅子が出発できませんでした",
 	ErrorCodeFailedToAcceptRequest:                          "椅子がライドを受理できませんでした",
 	ErrorCodeFailedToEvaluate:                               "ユーザーのライド評価に失敗しました",
+	ErrorCodeEvaluateTimeout:                                "ユーザーのライド評価がタイムアウトしました",
 	ErrorCodeFailedToCheckRequestHistory:                    "ユーザーがライド履歴の取得に失敗しました",
 	ErrorCodeFailedToCreateRequest:                          "ユーザーが新しくライドを作成できませんでした",
 	ErrorCodeUserNotRequestingButStatusChanged:              "ユーザーが想定していない通知を受け取りました",
@@ -115,8 +121,9 @@ var ErrorTexts = map[ErrorCode]string{
 	ErrorCodeUncontrollableRequestReceived:                  "アサインされたライドがベンチマーカー外で作られたものであるため処理できません",
 	ErrorCodeChairReceivedDataIsWrong:                       "椅子が受け取った通知の内容が想定と異なります",
 	ErrorCodeWrongNearbyChairs:                              "取得した付近の椅子情報に不備があります",
-	ErrorCodeLackOfNearbyChairs:                             "付近の椅子情報が想定よりも3つ以上足りていません",
+	ErrorCodeLackOfNearbyChairs:                             "付近の椅子情報が想定よりも足りていません",
 	ErrorCodeMatchingTimeout:                                "ライドが長時間マッチングされませんでした",
+	ErrorCodeUserReceivedDataIsWrong:                        "ユーザーが受け取った通知の内容が想定と異なります",
 }
 
 type codeError struct {

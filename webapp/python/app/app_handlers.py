@@ -56,7 +56,6 @@ def app_post_users(
     access_token = secure_random_str(32)
     invitation_code = secure_random_str(15)
 
-    # start transaction
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -587,18 +586,17 @@ class AppGetNotificationResponseData(BaseModel):
 
 class AppGetNotificationResponse(BaseModel):
     data: AppGetNotificationResponseData | None = None
+    retry_after_ms: int | None = None
 
 
 @router.get(
     "/notification",
-    response_model=AppGetNotificationResponse,
     status_code=HTTPStatus.OK,
     response_model_exclude_none=True,
 )
 def app_get_notification(
     user: Annotated[User, Depends(app_auth_middleware)],
-    response: Response,
-) -> AppGetNotificationResponse | Response:
+) -> AppGetNotificationResponse:
     with engine.begin() as conn:
         row = conn.execute(
             text(
@@ -607,8 +605,8 @@ def app_get_notification(
             {"user_id": user.id},
         ).fetchone()
         if row is None:
-            response.status_code = HTTPStatus.OK
-            return response
+            notification_response = AppGetNotificationResponse(retry_after_ms=30)
+            return notification_response
 
         ride: Ride = Ride.model_validate(row)
 
@@ -650,7 +648,8 @@ def app_get_notification(
                 chair=None,
                 created_at=timestamp_millis(ride.created_at),
                 updated_at=timestamp_millis(ride.updated_at),
-            )
+            ),
+            retry_after_ms=30,
         )
 
         if ride.chair_id:
@@ -689,32 +688,6 @@ class RecentRide(BaseModel):
     evaluation: int
 
 
-class AppChairStats(BaseModel):
-    # 最近の乗車履歴
-    recent_rides: list[RecentRide]
-
-    # 累計の情報
-    total_rides_count: int
-    total_evaluation_avg: float
-
-
-class AppChair(BaseModel):
-    id: str
-    name: str
-    model: str
-    stats: AppChairStats
-
-
-class AppGetRideResponse(BaseModel):
-    id: str
-    pickup_coordinate: Coordinate
-    destination_coordinate: Coordinate
-    status: str
-    chair: AppChair | None = None
-    created_at: int
-    updated_at: int
-
-
 def get_chair_stats(
     conn: Connection, chair_id: str
 ) -> AppGetNotificationResponseChairStats:
@@ -722,7 +695,7 @@ def get_chair_stats(
         text("SELECT * FROM rides WHERE chair_id = :chair_id ORDER BY updated_at DESC"),
         {"chair_id": chair_id},
     ).fetchall()
-    total_ride_count = len(rides)
+    total_ride_count = 0
     total_evaluation = 0.0
 
     for ride in rides:
@@ -750,6 +723,7 @@ def get_chair_stats(
         if not is_completed:
             continue
 
+        total_ride_count += 1
         total_evaluation += float(ride.evaluation)
 
     if total_ride_count > 0:

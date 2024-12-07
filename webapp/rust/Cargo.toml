@@ -9,7 +9,6 @@ anyhow = { version = "1", features = ["backtrace"] }
 axum = "0.7"
 axum-extra = { version = "0.9", features = ["cookie"] }
 chrono = "0.4"
-futures-util = "0.3"
 hex = "0.4"
 listenfd = "1"
 num-traits = "0.2"

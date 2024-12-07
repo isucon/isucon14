@@ -79,7 +79,10 @@ const ChairProgress: FC<{
         <div className="w-full me-6">
           {rideStatus &&
             ["MATCHING", "COMPLETED", "ENROUTE"].includes(rideStatus) && (
-              <div style={{ transform: `translateX(${progressToPickup}%)` }}>
+              <div
+                className="transition-transform duration-300"
+                style={{ transform: `translateX(${progressToPickup}%)` }}
+              >
                 <div
                   className={twMerge(
                     rideStatus === "ENROUTE" && "animate-shake",
@@ -97,6 +100,7 @@ const ChairProgress: FC<{
           {rideStatus &&
             ["PICKUP", "CARRYING", "ARRIVED"].includes(rideStatus) && (
               <div
+                className="transition-transform duration-300"
                 style={{ transform: `translateX(${progressToDestination}%)` }}
               >
                 <div

@@ -17,7 +17,7 @@ import { ChairIcon } from "~/components/icon/chair";
 import { PinIcon } from "~/components/icon/pin";
 import { Button } from "~/components/primitives/button/button";
 import { Text } from "~/components/primitives/text/text";
-import type { Coordinate, DisplayPos, NearByChair } from "~/types";
+import type { Coordinate, DisplayPos, Distance, NearByChair } from "~/types";
 import { CityObjects, TownList } from "./map-data";
 
 const GridDistance = 20;
@@ -48,6 +48,15 @@ const centerPosFrom = (pos: DisplayPos, outerRect: DOMRect): DisplayPos => {
   return {
     x: pos.x - outerRect.width / 2,
     y: pos.y - outerRect.height / 2,
+  };
+};
+
+const displaySizeToDistance = (rect: DOMRect): Distance => {
+  const startPos = posToCoordinate({ x: 0, y: 0 });
+  const endPos = posToCoordinate({ x: rect.right, y: rect.bottom });
+  return {
+    horizontalDistance: startPos.latitude - endPos.latitude,
+    verticalDistance: startPos.longitude - endPos.longitude,
   };
 };
 
@@ -334,6 +343,7 @@ const TownLayer = memo(function TownLayer() {
 
 type MapProps = ComponentProps<"div"> & {
   onMove?: (coordinate: Coordinate) => void;
+  onUpdateViewSize?: (distance: Distance) => void;
   selectable?: boolean;
   selectorPinColor?: `#${string}`;
   from?: Coordinate;
@@ -346,6 +356,7 @@ export const Map: FC<MapProps> = ({
   selectable,
   selectorPinColor,
   onMove,
+  onUpdateViewSize,
   from,
   to,
   chairs,
@@ -353,6 +364,7 @@ export const Map: FC<MapProps> = ({
   className,
 }) => {
   const onMoveRef = useRef(onMove);
+  const onUpdateViewSizeRef = useRef(onUpdateViewSize);
   const outerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrag, setIsDrag] = useState(false);
@@ -386,6 +398,12 @@ export const Map: FC<MapProps> = ({
       return;
     }
   }, []);
+
+  useEffect(() => {
+    if (!outerRect) return;
+    const distance = displaySizeToDistance(outerRect);
+    onUpdateViewSizeRef.current?.(distance);
+  }, [outerRect]);
 
   useLayoutEffect(() => {
     updateViewLocation(initialCoordinate);

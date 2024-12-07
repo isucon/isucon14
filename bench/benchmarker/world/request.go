@@ -85,8 +85,8 @@ type Request struct {
 
 	// BenchRequestedAt ベンチがライドのリクエストを送って成功した時間
 	BenchRequestedAt time.Time
-	// BenchMatchedAt ベンチがAcceptのリクエストを送って成功した時間
-	BenchMatchedAt time.Time
+	// BenchRequestAcceptTime ベンチがAcceptのリクエストを送った時間(レスポンスが帰ってきた時間ではない)
+	BenchRequestAcceptTime time.Time
 
 	// Evaluated リクエストの評価が完了しているかどうか
 	Evaluated atomic.Bool

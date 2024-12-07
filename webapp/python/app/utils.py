@@ -32,6 +32,7 @@ def calculate_fare(
     return INITIAL_FARE + metered_fare
 
 
+# マンハッタン距離を求める
 def calculate_distance(
     a_latitude: int, a_longitude: int, b_latitude: int, b_longitude: int
 ) -> int:

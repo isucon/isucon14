@@ -187,6 +187,7 @@ struct SimpleUser {
 #[derive(Debug, serde::Serialize)]
 struct ChairGetNotificationResponse {
     data: Option<ChairGetNotificationResponseData>,
+    retry_after_ms: Option<i32>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -210,7 +211,10 @@ async fn chair_get_notification(
             .fetch_optional(&mut *tx)
             .await?
     else {
-        return Ok(axum::Json(ChairGetNotificationResponse { data: None }));
+        return Ok(axum::Json(ChairGetNotificationResponse {
+            data: None,
+            retry_after_ms: Some(30),
+        }));
     };
 
     let yet_sent_ride_status: Option<RideStatus> =
@@ -259,6 +263,7 @@ async fn chair_get_notification(
             },
             status,
         }),
+        retry_after_ms: Some(30),
     }))
 }
 

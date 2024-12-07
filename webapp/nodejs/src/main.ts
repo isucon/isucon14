@@ -49,8 +49,12 @@ app.use(
   createMiddleware<Environment>(async (ctx, next) => {
     const connection = await pool.getConnection();
     ctx.set("dbConn", connection);
-    await next();
-    pool.releaseConnection(connection);
+    try {
+      await next();
+    } finally {
+      await connection.rollback();
+      pool.releaseConnection(connection);
+    }
   }),
 );
 
