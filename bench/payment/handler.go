@@ -61,8 +61,6 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"message": "リクエストペイロードがサーバーに記録されているものと異なります"})
 			return
 		}
-		writeResponse(w, p.Status)
-		return
 	} else {
 		p.Token = token
 		p.Amount = req.Amount
