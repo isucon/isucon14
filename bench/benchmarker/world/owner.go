@@ -185,9 +185,9 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 			}
 			reqsMessage := ""
 			for _, r := range reqs {
-				reqsMessage += fmt.Sprintf(" (%s, %d) ", r.ServerID, r.Sales())
+				reqsMessage += fmt.Sprintf(" (%s, %d, %s)", r.ServerID, r.Sales(), r.ServerCompletedAt.Format(time.RFC3339))
 			}
-			return fmt.Errorf("salesがずれているデータがあります (id: %s, got: %d, want: %d), (req.ID, req.Fare) = %s", chair.ID, chair.Sales, sales.Sales, reqsMessage)
+			return fmt.Errorf("salesがずれているデータがあります (id: %s, until: %s, got: %d, want: %d), (req.ID, req.Fare, req.CompletedAt) = %s", chair.ID, until.Format(time.RFC3339), chair.Sales, sales.Sales, reqsMessage)
 		}
 	}
 
