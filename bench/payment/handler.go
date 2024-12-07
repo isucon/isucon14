@@ -99,6 +99,8 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			writeResponse(w, p.Status)
 			return
+		} else {
+			s.failureCounts.Set(token, failureCount+1)
 		}
 	}
 	writeRandomError(w)
