@@ -88,7 +88,7 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 			alreadyProcessed := false
 			if !newPayment {
 				for _, processed := range s.processedPayments.ToSlice() {
-					if processed.payment == p {
+					if processed.payment.IdempotencyKey == p.IdempotencyKey {
 						alreadyProcessed = true
 						break
 					}
