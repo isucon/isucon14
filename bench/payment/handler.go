@@ -69,6 +69,7 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	failureCount, _ := s.failureCounts.GetOrSetDefault(token, func() int { return 0 })
+	fmt.Printf("[LOG-ALL] %s %d\n", token, failureCount)
 	if p.locked.CompareAndSwap(false, true) {
 		defer p.locked.Store(false)
 
@@ -91,11 +92,13 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 					s.errChan <- p.Status.Err
 				}
 				s.failureCounts.Set(token, 0)
+				fmt.Printf("[LOG-SUCCESS] %s %d\n", token, failureCount)
 			}
 			writeResponse(w, p.Status)
 			return
 		} else {
 			s.failureCounts.Set(token, failureCount+1)
+			fmt.Printf("[LOG-FAIL] %s %d\n", token, failureCount)
 		}
 	}
 	writeRandomError(w)

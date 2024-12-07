@@ -45,8 +45,6 @@ func (db *PaymentDB) Verify(p *payment.Payment) payment.Status {
 	if p.Amount != req.Fare() {
 		status.Err = fmt.Errorf("支払い額が不正です。token: %s, expected amount: %v, actual amount: %v, request id: %s", p.Token, req.Fare(), p.Amount, req.ServerID)
 	}
-	// ./log.txtにリクエストIDとそのfareを出力
-	fmt.Printf("[VERIFY] %s %d\n", req.ServerID, req.Fare())
 
 	db.CommittedPayments.Append(p)
 	return status
