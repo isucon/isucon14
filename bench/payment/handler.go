@@ -101,8 +101,10 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if !alreadyProcessed {
-				s.processedPayments.Append(&processedPayment{payment: p, processedAt: time.Now()})
 				p.Status = s.verifier.Verify(p)
+				if p.Status.Type == StatusSuccess {
+					s.processedPayments.Append(&processedPayment{payment: p, processedAt: time.Now()})
+				}
 				if p.Status.Err != nil {
 					s.errChan <- p.Status.Err
 				}
