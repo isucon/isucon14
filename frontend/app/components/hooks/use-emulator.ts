@@ -167,7 +167,8 @@ export const useEmulator = () => {
     if (!ride_id || !currentCoordinate || status !== "MATCHING") return;
     const abortController = new AbortController();
     const timeoutId = setTimeout(
-      () => void postEnroute(ride_id, currentCoordinate, abortController.signal),
+      () =>
+        void postEnroute(ride_id, currentCoordinate, abortController.signal),
       1000,
     );
     return () => {
