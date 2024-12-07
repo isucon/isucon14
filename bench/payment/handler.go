@@ -28,6 +28,22 @@ func getTokenFromAuthorizationHeader(r *http.Request) (string, error) {
 }
 
 func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
+	token, err := getTokenFromAuthorizationHeader(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"message": err.Error()})
+		return
+	}
+
+	{
+		_, set := s.requestingTokens.GetOrSetDefault(token, func() struct{} { return struct{}{} })
+		defer s.requestingTokens.Delete(token)
+		if !set {
+			s.errChan <- fmt.Errorf("同じ決済トークンで同時に複数のリクエストが送信されました。token: %s", token)
+			writeJSON(w, http.StatusConflict, map[string]string{"message": "既に処理中です"})
+			return
+		}
+	}
+
 	var (
 		p          *Payment
 		newPayment bool
@@ -36,19 +52,9 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	idk := r.Header.Get(IdempotencyKeyHeader)
 	if len(idk) > 0 {
 		p, newPayment = s.knownKeys.GetOrSetDefault(idk, func() *Payment { return NewPayment(idk) })
-		if !newPayment && p.locked.Load() {
-			writeJSON(w, http.StatusConflict, map[string]string{"message": "既に処理中です"})
-			return
-		}
 	} else {
 		p = NewPayment("")
 		newPayment = true
-	}
-
-	token, err := getTokenFromAuthorizationHeader(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"message": err.Error()})
-		return
 	}
 
 	var req PostPaymentRequest
@@ -66,42 +72,6 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		p.Amount = req.Amount
 	}
 
-	failureCount, _ := s.failureCounts.GetOrSetDefault(token, func() int { return 0 })
-	fmt.Printf("[LOG-ALL] %s %d\n", token, failureCount)
-	if p.locked.CompareAndSwap(false, true) {
-		defer p.locked.Store(false)
-
-		if failureCount >= 1 {
-			alreadyProcessed := false
-			if !newPayment {
-				for _, processed := range s.processedPayments.ToSlice() {
-					if processed.payment.IdempotencyKey == p.IdempotencyKey {
-						alreadyProcessed = true
-						break
-					}
-				}
-			}
-			if !alreadyProcessed {
-				p.Status = s.verifier.Verify(p)
-				if p.Status.Type == StatusSuccess {
-					s.processedPayments.Append(&processedPayment{payment: p, processedAt: time.Now()})
-				}
-				if p.Status.Err != nil {
-					s.errChan <- p.Status.Err
-				}
-				s.failureCounts.Set(token, 0)
-				fmt.Printf("[LOG-SUCCESS] %s %d\n", token, failureCount)
-			}
-			writeResponse(w, p.Status)
-			return
-		} else {
-			s.failureCounts.Set(token, failureCount+1)
-			fmt.Printf("[LOG-FAIL] %s %d\n", token, failureCount)
-		}
-	}
-	writeRandomError(w)
-	return
-
 	time.Sleep(s.processTime)
 	// (直近3秒で処理された payment の数) / 100 の確率で処理を失敗させる(最大50%)
 	var recentProcessedCount int
@@ -115,43 +85,33 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	if failurePercentage > 50 {
 		failurePercentage = 50
 	}
-	// failureCount, _ := s.failureCounts.GetOrSetDefault(token, func() int { return 0 })
+	failureCount, _ := s.failureCounts.GetOrSetDefault(token, func() int { return 0 })
 	if rand.IntN(100) > failurePercentage || failureCount >= 4 {
-		// lock はここでしか触らない。lock が true の場合は idempotency key が同じリクエストが処理中の場合のみ
-		if p.locked.CompareAndSwap(false, true) {
-			alreadyProcessed := false
-			if !newPayment {
-				alreadyProcessedIdks := map[string]struct{}{}
-				for _, processed := range s.processedPayments.ToSlice() {
-					_, exist := alreadyProcessedIdks[processed.payment.IdempotencyKey]
-					if exist {
-						slog.Error("idempotency key が重複しています", "idk", processed.payment.IdempotencyKey)
-					}
-					alreadyProcessedIdks[processed.payment.IdempotencyKey] = struct{}{}
-					if processed.payment.IdempotencyKey == p.IdempotencyKey {
-						alreadyProcessed = true
-						break
-					}
+		alreadyProcessed := false
+		if !newPayment {
+			for _, processed := range s.processedPayments.ToSlice() {
+				if processed.payment.IdempotencyKey == p.IdempotencyKey {
+					alreadyProcessed = true
+					break
 				}
 			}
-			if !alreadyProcessed {
-				p.Status = s.verifier.Verify(p)
-				if p.Status.Type == StatusSuccess {
-					s.processedPayments.Append(&processedPayment{payment: p, processedAt: time.Now()})
-				}
-				if p.Status.Err != nil {
-					s.errChan <- p.Status.Err
-				}
-				s.failureCounts.Delete(token)
-				p.locked.Store(false) // idenpotency key が同じリクエストが来たときにエラーを返さないように
-			}
-			if rand.IntN(100) > failurePercentage || failureCount >= 4 {
-				writeResponse(w, p.Status)
-			} else {
-				writeRandomError(w)
-			}
-			return
 		}
+		if !alreadyProcessed {
+			p.Status = s.verifier.Verify(p)
+			if p.Status.Type == StatusSuccess {
+				s.processedPayments.Append(&processedPayment{payment: p, processedAt: time.Now()})
+			}
+			if p.Status.Err != nil {
+				s.errChan <- p.Status.Err
+			}
+			s.failureCounts.Delete(token)
+		}
+		if rand.IntN(100) > failurePercentage || failureCount >= 4 {
+			writeResponse(w, p.Status)
+		} else {
+			writeRandomError(w)
+		}
+		return
 	} else {
 		s.failureCounts.Set(token, failureCount+1)
 	}

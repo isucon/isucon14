@@ -2,7 +2,6 @@ package payment
 
 import (
 	"fmt"
-	"sync/atomic"
 )
 
 type Status struct {
@@ -38,7 +37,6 @@ type Payment struct {
 	Token          string
 	Amount         int
 	Status         Status
-	locked         atomic.Bool
 }
 
 func NewPayment(idk string) *Payment {
@@ -46,6 +44,5 @@ func NewPayment(idk string) *Payment {
 		IdempotencyKey: idk,
 		Status:         Status{Type: StatusInitial, Err: nil},
 	}
-	p.locked.Store(false)
 	return p
 }
