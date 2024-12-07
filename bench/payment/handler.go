@@ -34,15 +34,13 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	{
-		_, set := s.requestingTokens.GetOrSetDefault(token, func() struct{} { return struct{}{} })
-		defer s.requestingTokens.Delete(token)
-		if !set {
-			s.errChan <- fmt.Errorf("同じ決済トークンで同時に複数のリクエストが送信されました。token: %s", token)
-			writeJSON(w, http.StatusConflict, map[string]string{"message": "既に処理中です"})
-			return
-		}
-	}
+	// _, onlyOneRequest := s.requestingTokens.GetOrSetDefault(token, func() struct{} { return struct{}{} })
+	// defer s.requestingTokens.Delete(token)
+	// if !onlyOneRequest {
+	// 	s.errChan <- fmt.Errorf("同じ決済トークンで同時に複数のリクエストが送信されました。token: %s", token)
+	// 	writeJSON(w, http.StatusConflict, map[string]string{"message": "既に処理中です"})
+	// 	return
+	// }
 
 	var (
 		p          *Payment
