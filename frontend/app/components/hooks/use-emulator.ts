@@ -1,7 +1,9 @@
 import { useEffect } from "react";
+import { apiBaseURL } from "~/api/api-base-url";
 import {
   fetchChairPostCoordinate,
   fetchChairPostRideStatus,
+  ChairGetNotificationResponse,
 } from "~/api/api-components";
 import { RideId } from "~/api/api-parameters";
 import { Coordinate } from "~/api/api-schemas";
@@ -37,6 +39,42 @@ const move = (
   }
 };
 
+function jsonFromSseResult<T>(value: string) {
+  const data = value.slice("data:".length).trim();
+  return JSON.parse(data) as T;
+}
+
+const notificationFetch = async () => {
+  try {
+    const notification = await fetch(`${apiBaseURL}/chair/notification`);
+    const isEventStream = !!notification?.headers
+      .get("Content-type")
+      ?.split(";")?.[0]
+      .includes("text/event-stream");
+
+    if (isEventStream) {
+      const reader = notification.body?.getReader();
+      const decoder = new TextDecoder();
+      const readed = (await reader?.read())?.value;
+      const decoded = decoder.decode(readed);
+      const json =
+        jsonFromSseResult<ChairGetNotificationResponse["data"]>(decoded);
+      return { data: json };
+    }
+    const json = (await notification.json()) as
+      | ChairGetNotificationResponse
+      | undefined;
+    return json;
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const getStatus = async () => {
+  const notification = await notificationFetch();
+  return notification?.data?.status;
+};
+
 const currentCoodinatePost = (coordinate: Coordinate) => {
   setSimulatorCurrentCoordinate(coordinate);
   return fetchChairPostCoordinate({
@@ -44,33 +82,29 @@ const currentCoodinatePost = (coordinate: Coordinate) => {
   });
 };
 
-const postEnroute = (
-  rideId: string,
-  coordinate: Coordinate,
-  abortSignal: AbortSignal,
-) => {
+const postEnroute = async (rideId: string, coordinate: Coordinate) => {
+  if ((await getStatus()) !== "MATCHING") {
+    return;
+  }
   setSimulatorStartCoordinate(coordinate);
-  return fetchChairPostRideStatus(
-    {
-      body: { status: "ENROUTE" },
-      pathParams: {
-        rideId,
-      },
+  return fetchChairPostRideStatus({
+    body: { status: "ENROUTE" },
+    pathParams: {
+      rideId,
     },
-    abortSignal,
-  );
+  });
 };
 
-const postCarring = (rideId: string, abortSignal: AbortSignal) => {
-  return fetchChairPostRideStatus(
-    {
-      body: { status: "CARRYING" },
-      pathParams: {
-        rideId,
-      },
+const postCarring = async (rideId: string) => {
+  if ((await getStatus()) !== "PICKUP") {
+    return;
+  }
+  return fetchChairPostRideStatus({
+    body: { status: "CARRYING" },
+    pathParams: {
+      rideId,
     },
-    abortSignal,
-  );
+  });
 };
 
 const forcePickup = (pickup_coordinate: Coordinate) =>
@@ -78,16 +112,12 @@ const forcePickup = (pickup_coordinate: Coordinate) =>
     void currentCoodinatePost(pickup_coordinate);
   }, 60_000);
 
-const forceCarry = (
-  pickup_coordinate: Coordinate,
-  rideId: RideId,
-  abortSignal: AbortSignal,
-) =>
+const forceCarry = (pickup_coordinate: Coordinate, rideId: RideId) =>
   setTimeout(() => {
     try {
       void (async () => {
-        void (await currentCoodinatePost(pickup_coordinate));
-        void postCarring(rideId, abortSignal);
+        await currentCoodinatePost(pickup_coordinate);
+        void postCarring(rideId);
       })();
     } catch (error) {
       console.error(error);
@@ -116,11 +146,7 @@ export const useEmulator = () => {
         timeoutId = forcePickup(pickup_coordinate);
         break;
       case "PICKUP":
-        timeoutId = forceCarry(
-          pickup_coordinate,
-          ride_id,
-          abortController.signal,
-        );
+        timeoutId = forceCarry(pickup_coordinate, ride_id);
         break;
       case "CARRYING":
         timeoutId = forceArrive(destination_coordinate);
@@ -151,29 +177,21 @@ export const useEmulator = () => {
   useEffect(() => {
     if (isAnotherSimulatorBeingUsed) return;
     if (!ride_id || status !== "PICKUP") return;
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(
-      () => void postCarring(ride_id, abortController.signal),
-      1000,
-    );
+    const timeoutId = setTimeout(() => void postCarring(ride_id), 1000);
     return () => {
       clearTimeout(timeoutId);
-      abortController.abort();
     };
   }, [status, ride_id, isAnotherSimulatorBeingUsed]);
 
   useEffect(() => {
     if (isAnotherSimulatorBeingUsed) return;
     if (!ride_id || !currentCoordinate || status !== "MATCHING") return;
-    const abortController = new AbortController();
     const timeoutId = setTimeout(
-      () =>
-        void postEnroute(ride_id, currentCoordinate, abortController.signal),
+      () => void postEnroute(ride_id, currentCoordinate),
       1000,
     );
     return () => {
       clearTimeout(timeoutId);
-      abortController.abort();
     };
   }, [status, ride_id, currentCoordinate, isAnotherSimulatorBeingUsed]);
 
@@ -194,6 +212,8 @@ export const useEmulator = () => {
               move(chair.coordinate, data.destination_coordinate),
             );
             break;
+          case "ARRIVED":
+            setCoordinate?.(data.destination_coordinate);
         }
       } catch (e) {
         // statusの更新タイミングの都合で到着状態を期待しているが必ず取れるとは限らない
