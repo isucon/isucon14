@@ -90,7 +90,7 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 				if p.Status.Err != nil {
 					s.errChan <- p.Status.Err
 				}
-				s.failureCounts.Delete(token)
+				s.failureCounts.Set(token, 0)
 			}
 			writeResponse(w, p.Status)
 			return
