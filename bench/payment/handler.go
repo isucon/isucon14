@@ -73,7 +73,7 @@ func (s *Server) PostPaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	if p.locked.CompareAndSwap(false, true) {
 		defer p.locked.Store(false)
 
-		if failureCount >= 0 {
+		if failureCount >= 1 {
 			alreadyProcessed := false
 			if !newPayment {
 				for _, processed := range s.processedPayments.ToSlice() {
