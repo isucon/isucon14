@@ -163,6 +163,7 @@ try {
     },
     "body": JSON.stringify({"evaluation":4})
   })
+  await sleep(100)
   postRide()
   } catch (e) {
     console.error(e)
