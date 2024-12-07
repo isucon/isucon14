@@ -227,8 +227,8 @@ func (p *Owner) ValidateSales(until time.Time, serverSide *GetOwnerSalesResponse
 	}
 
 	// Totalの検証
-	if totals < totalsAtSnapshot || serverSide.Total < totals || serverSide.Total < totalsAtSnapshot {
-		return fmt.Errorf("total_salesがズレています (got: %d, want(min): %d, want(max): %d)", serverSide.Total, totalsAtSnapshot, totals)
+	if serverSide.Total < totalsAtSnapshot || totals < serverSide.Total {
+		return fmt.Errorf("totalがずれているデータがあります (got: %d, want(min): %d, want(max): %d)", serverSide.Total, totalsAtSnapshot, totals)
 	}
 
 	return nil
