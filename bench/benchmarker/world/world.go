@@ -450,7 +450,7 @@ func (w *World) checkNearbyChairsResponse(baseTime time.Time, current Coordinate
 			}
 			if ng > 0 {
 				if !w.finished.Load() {
-					w.PublishEvent(&EventSoftError{Error: WrapCodeError(ErrorCodeLackOfNearbyChairs, fmt.Errorf("不足数%d台", ng))})
+					w.PublishEvent(&EventSoftError{Error: WrapCodeError(ErrorCodeLackOfNearbyChairs, fmt.Errorf("不足数%d台。len(suspiciousChairs): %d", ng, len(suspiciousChairs)))})
 				}
 			}
 		}()
