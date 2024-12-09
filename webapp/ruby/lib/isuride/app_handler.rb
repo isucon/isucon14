@@ -308,24 +308,28 @@ module Isuride
 
     # GET /api/app/notification
     get '/notification' do
-      response = db_transaction do |tx|
-        ride = tx.xquery('SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', @current_user.id).first
-        if ride.nil?
-          halt json(data: nil, retry_after_ms: 30)
-        end
+      content_type 'text/event-stream'
 
-        yet_sent_ride_status = tx.xquery('SELECT * FROM ride_statuses WHERE ride_id = ? AND app_sent_at IS NULL ORDER BY created_at ASC LIMIT 1', ride.fetch(:id)).first
-        status =
-          if yet_sent_ride_status.nil?
-            get_latest_ride_status(tx, ride.fetch(:id))
-          else
-            yet_sent_ride_status.fetch(:status)
+      stream do |out|
+        last_ride = nil
+        last_ride_status = nil
+
+        until out.closed?
+          ride = db.xquery('SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', @current_user.id).first
+          if ride.nil?
+            sleep(0.1)
+            next
           end
 
-        fare = calculate_discounted_fare(tx, @current_user.id, ride, ride.fetch(:pickup_latitude), ride.fetch(:pickup_longitude), ride.fetch(:destination_latitude), ride.fetch(:destination_longitude))
+          status = get_latest_ride_status(db, ride.fetch(:id))
+          if !last_ride.nil? && ride.fetch(:id) == last_ride.fetch(:id) && status == last_ride_status
+            sleep(0.1)
+            next
+          end
 
-        response = {
-          data: {
+          fare = calculate_discounted_fare(db, @current_user.id, ride, ride.fetch(:pickup_latitude), ride.fetch(:pickup_longitude), ride.fetch(:destination_latitude), ride.fetch(:destination_longitude))
+
+          data = {
             ride_id: ride.fetch(:id),
             pickup_coordinate: {
               latitude: ride.fetch(:pickup_latitude),
@@ -339,29 +343,25 @@ module Isuride
             status:,
             created_at: time_msec(ride.fetch(:created_at)),
             updated_at: time_msec(ride.fetch(:updated_at)),
-          },
-          retry_after_ms: 30,
-        }
-
-        unless ride.fetch(:chair_id).nil?
-          chair = tx.xquery('SELECT * FROM chairs WHERE id = ?', ride.fetch(:chair_id)).first
-          stats = get_chair_stats(tx, chair.fetch(:id))
-          response[:data][:chair] = {
-            id: chair.fetch(:id),
-            name: chair.fetch(:name),
-            model: chair.fetch(:model),
-            stats:,
           }
-        end
 
-        unless yet_sent_ride_status.nil?
-          tx.xquery('UPDATE ride_statuses SET app_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?', yet_sent_ride_status.fetch(:id))
-        end
+          unless ride.fetch(:chair_id).nil?
+            chair = db.xquery('SELECT * FROM chairs WHERE id = ?', ride.fetch(:chair_id)).first
+            stats = get_chair_stats(db, chair.fetch(:id))
+            data[:chair] = {
+              id: chair.fetch(:id),
+              name: chair.fetch(:name),
+              model: chair.fetch(:model),
+              stats:,
+            }
+          end
 
-        response
+          last_ride = ride
+          last_ride_status = status
+
+          out << "data: #{JSON.dump(data)}\n\n"
+        end
       end
-
-      json(response)
     end
 
     # GET /api/app/nearby-chairs
