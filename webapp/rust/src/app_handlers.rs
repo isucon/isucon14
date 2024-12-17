@@ -1,6 +1,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum_extra::extract::CookieJar;
+use futures_util::Stream;
 use ulid::Ulid;
 
 use crate::models::{Chair, ChairLocation, Coupon, Owner, PaymentToken, Ride, RideStatus, User};
@@ -541,12 +542,6 @@ async fn app_post_ride_evaluation(
 }
 
 #[derive(Debug, serde::Serialize)]
-struct AppGetNotificationResponse {
-    data: Option<AppGetNotificationResponseData>,
-    retry_after_ms: Option<i32>,
-}
-
-#[derive(Debug, serde::Serialize)]
 struct AppGetNotificationResponseData {
     ride_id: String,
     pickup_coordinate: Coordinate,
@@ -576,91 +571,104 @@ struct AppGetNotificationResponseChairStats {
 async fn app_get_notification(
     State(AppState { pool, .. }): State<AppState>,
     axum::Extension(user): axum::Extension<User>,
-) -> Result<axum::Json<AppGetNotificationResponse>, Error> {
-    let mut tx = pool.begin().await?;
+) -> axum::response::Sse<impl Stream<Item = Result<axum::response::sse::Event, Error>>> {
+    async fn f(
+        pool: &sqlx::MySqlPool,
+        user_id: &str,
+        last_ride_id: &mut String,
+        last_ride_status: &mut String,
+    ) -> Result<Option<AppGetNotificationResponseData>, Error> {
+        let mut tx = pool.begin().await?;
 
-    let Some(ride): Option<Ride> =
-        sqlx::query_as("SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1")
-            .bind(&user.id)
-            .fetch_optional(&mut *tx)
-            .await?
-    else {
-        return Ok(axum::Json(AppGetNotificationResponse {
-            data: None,
-            retry_after_ms: Some(30),
-        }));
-    };
-
-    let yet_sent_ride_status: Option<RideStatus> = sqlx::query_as("SELECT * FROM ride_statuses WHERE ride_id = ? AND app_sent_at IS NULL ORDER BY created_at ASC LIMIT 1")
-        .bind(&ride.id)
-        .fetch_optional(&mut *tx)
-        .await?;
-    let (ride_status_id, status) = if let Some(yet_sent_ride_status) = yet_sent_ride_status {
-        (Some(yet_sent_ride_status.id), yet_sent_ride_status.status)
-    } else {
-        (
-            None,
-            crate::get_latest_ride_status(&mut *tx, &ride.id).await?,
+        let Some(ride): Option<Ride> = sqlx::query_as(
+            "SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
         )
-    };
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?
+        else {
+            return Ok(None);
+        };
 
-    let fare = calculate_discounted_fare(
-        &mut tx,
-        &user.id,
-        Some(&ride),
-        ride.pickup_latitude,
-        ride.pickup_longitude,
-        ride.destination_latitude,
-        ride.destination_longitude,
-    )
-    .await?;
+        let status = crate::get_latest_ride_status(&mut *tx, &ride.id).await?;
+        if ride.id == *last_ride_id && status == *last_ride_status {
+            return Ok(None);
+        }
 
-    let mut data = AppGetNotificationResponseData {
-        ride_id: ride.id,
-        pickup_coordinate: Coordinate {
-            latitude: ride.pickup_latitude,
-            longitude: ride.pickup_longitude,
-        },
-        destination_coordinate: Coordinate {
-            latitude: ride.destination_latitude,
-            longitude: ride.destination_longitude,
-        },
-        fare,
-        status,
-        chair: None,
-        created_at: ride.created_at.timestamp_millis(),
-        updated_at: ride.updated_at.timestamp_millis(),
-    };
+        let fare = calculate_discounted_fare(
+            &mut tx,
+            user_id,
+            Some(&ride),
+            ride.pickup_latitude,
+            ride.pickup_longitude,
+            ride.destination_latitude,
+            ride.destination_longitude,
+        )
+        .await?;
 
-    if let Some(chair_id) = ride.chair_id {
-        let chair: Chair = sqlx::query_as("SELECT * FROM chairs WHERE id = ?")
-            .bind(chair_id)
-            .fetch_one(&mut *tx)
-            .await?;
+        let mut data = AppGetNotificationResponseData {
+            ride_id: ride.id.clone(),
+            pickup_coordinate: Coordinate {
+                latitude: ride.pickup_latitude,
+                longitude: ride.pickup_longitude,
+            },
+            destination_coordinate: Coordinate {
+                latitude: ride.destination_latitude,
+                longitude: ride.destination_longitude,
+            },
+            fare,
+            status: status.clone(),
+            chair: None,
+            created_at: ride.created_at.timestamp_millis(),
+            updated_at: ride.updated_at.timestamp_millis(),
+        };
 
-        let stats = get_chair_stats(&mut tx, &chair.id).await?;
+        if let Some(chair_id) = ride.chair_id {
+            let chair: Chair = sqlx::query_as("SELECT * FROM chairs WHERE id = ?")
+                .bind(chair_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
-        data.chair = Some(AppGetNotificationResponseChair {
-            id: chair.id,
-            name: chair.name,
-            model: chair.model,
-            stats,
-        });
+            let stats = get_chair_stats(&mut tx, &chair.id).await?;
+
+            data.chair = Some(AppGetNotificationResponseChair {
+                id: chair.id,
+                name: chair.name,
+                model: chair.model,
+                stats,
+            });
+        }
+
+        *last_ride_id = ride.id;
+        *last_ride_status = status;
+        Ok(Some(data))
     }
 
-    if let Some(ride_status_id) = ride_status_id {
-        sqlx::query("UPDATE ride_statuses SET app_sent_at = CURRENT_TIMESTAMP(6) WHERE id = ?")
-            .bind(ride_status_id)
-            .execute(&mut *tx)
-            .await?;
-    }
+    let stream = futures_util::stream::try_unfold(
+        ("".to_owned(), "".to_owned()),
+        move |(mut last_ride_id, mut last_ride_status)| {
+            let pool = pool.clone();
+            let user_id = user.id.clone();
+            async move {
+                loop {
+                    if let Some(data) =
+                        f(&pool, &user_id, &mut last_ride_id, &mut last_ride_status).await?
+                    {
+                        return Ok(Some((
+                            axum::response::sse::Event::default()
+                                .json_data(data)
+                                .unwrap(),
+                            (last_ride_id, last_ride_status),
+                        )));
+                    } else {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                }
+            }
+        },
+    );
 
-    tx.commit().await?;
-
-    Ok(axum::Json(AppGetNotificationResponse {
-        data: Some(data),
-        retry_after_ms: Some(30),
-    }))
+    axum::response::Sse::new(stream)
 }
 
 async fn get_chair_stats(

@@ -3,7 +3,7 @@ use isuride::{AppState, Error};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
-#[tokio::main]
+#[tokio::main(worker_threads = 24)]
 async fn main() -> anyhow::Result<()> {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var("RUST_LOG", "info,tower_http=debug,axum::rejection=trace");
@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
     let dbname = std::env::var("ISUCON_DB_NAME").unwrap_or_else(|_| "isuride".to_owned());
 
     let pool = sqlx::mysql::MySqlPoolOptions::new()
-        .max_connections(50)
+        .max_connections(100)
         .connect_with(
             sqlx::mysql::MySqlConnectOptions::default()
                 .host(&host)
